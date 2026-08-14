@@ -1,0 +1,10 @@
+endpoint                       p50       p95       p99       avg  err
+--------------------------------------------------------------------
+POST /ocr                   34.8ms    36.6ms    37.7ms    34.5ms    0
+POST /ocr/raw               29.0ms    30.9ms    32.0ms    29.0ms    0
+POST /ocr/pixels            21.3ms    23.4ms    24.6ms    21.4ms    0
+POST /ocr/batch            297.0ms   313.2ms   339.4ms   293.9ms    0
+POST /ocr/pdf?mode=ocr     480.7ms   678.6ms   701.9ms   489.2ms    0
+POST /ocr/pdf?mode=geometric    57.3ms    74.3ms    83.5ms    58.2ms    0
+POST /ocr/pdf?mode=auto     73.1ms   101.2ms   116.7ms    74.3ms    0
+POST /ocr/pdf?mode=auto_verified   535.8ms   748.4ms   776.3ms   548.7ms    0
