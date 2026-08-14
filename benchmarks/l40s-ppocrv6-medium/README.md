@@ -291,6 +291,7 @@ rather than local disk.
 | `results/results_25u_stats_history.csv` | Run 1 per-second trend |
 | `results/results_25u_run2_*.csv` | Run 2 (reproducibility check) |
 | `results/gpu_telemetry_25u.csv` | `nvidia-smi` samples showing the throttle |
+| `results/locust_report_25u.html` | Locust HTML report for run 1 (open in a browser) |
 
 ---
 
