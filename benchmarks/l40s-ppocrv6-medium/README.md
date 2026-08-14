@@ -82,9 +82,12 @@ by roughly 3×. `TRT_OPT_LEVEL=3` cut the detection engine build from ~10 min to
 Engines cache to `~/.cache/turbo-ocr` (229 MB total); subsequent starts take
 about 7 seconds.
 
+The cache is portable to identical hosts — see [DEPLOY.md](DEPLOY.md) for the
+exact reuse rules and a CUDA 12 Dockerfile that preserves the cache key.
+
 > Note: the cache key includes the CUDA **driver** version, so a host driver
-> upgrade invalidates every engine and triggers a full rebuild. Worth knowing
-> before patching a production box.
+> upgrade invalidates every engine and triggers a full rebuild — rebuild the
+> cache before rolling a driver, not after.
 
 ---
 
@@ -284,6 +287,8 @@ rather than local disk.
 |---|---|
 | `locustfile.py` | Configurable load test |
 | `run_server.sh` | Server launch used for every run here |
+| `DEPLOY.md` | Engine-cache reuse rules and container deployment |
+| `docker/Dockerfile.cuda12` | CUDA 12 image matching this build's engine cache key |
 | `results/throughput_medium.json` | Full endpoint × concurrency matrix |
 | `results/bench_throughput.txt` | Matrix console output |
 | `results/funsd.txt` | FUNSD accuracy + throughput |

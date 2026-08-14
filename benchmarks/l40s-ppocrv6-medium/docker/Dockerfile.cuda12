@@ -1,0 +1,170 @@
+# ============================================================
+# TurboOCR — CUDA 12 / TensorRT 10.16 image
+# ============================================================
+# The upstream docker/Dockerfile.gpu builds on nvcr.io TensorRT 26.03 (CUDA 13),
+# which needs NVIDIA driver 580+. This variant targets hosts still on a 12.x
+# driver (e.g. 550.x) and, just as importantly, produces a runtime whose
+# TensorRT-engine cache key matches engines built by the equivalent native
+# build — so a pre-built engine cache can be mounted for instant startup.
+#
+# The cache key (src/engine/trt/trt_engine_cache.cpp) is:
+#   v<profileVersion>:<type>:<onnxPath>:<size>:<mtime>:<TRT M.m.p>
+#     :sm<cc>:drv<cudaDriverGetVersion>:rt<cudaRuntimeGetVersion>[:dms..:dob..]:opt<level>
+# so CUDA_RUNTIME, TENSORRT and the host driver all have to match the machine
+# the engines were built on. See ../DEPLOY.md for the full compatibility matrix.
+#
+# Build:
+#   docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
+#                -t turboocr:cuda12 .
+# Run (with a pre-built engine cache — starts in seconds):
+#   docker run --gpus all -p 8080:8080 -p 50051:50051 \
+#     -v /path/to/engines:/engines:ro -e TRT_ENGINE_CACHE=/engines \
+#     turboocr:cuda12
+# ============================================================
+
+ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+# ------------------------------------------------------------
+# Stage 1 — builder
+# ------------------------------------------------------------
+FROM ${CUDA_IMAGE} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# GCC 13: the tree uses std::format, which Ubuntu 22.04's default GCC 11 lacks.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg \
+    && curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x60C317803A41BA51845E371A1E9377A2BA9EF27F" \
+        | gpg --dearmor -o /usr/share/keyrings/ubuntu-toolchain-r.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/ubuntu-toolchain-r.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/toolchain-r.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        gcc-13 g++-13 \
+        build-essential pkg-config git wget cmake \
+        libopencv-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+        libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev libc-ares-dev \
+        libcurl4-openssl-dev libturbojpeg0-dev libwebp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CC=gcc-13 CXX=g++-13 CUDAHOSTCXX=g++-13
+
+# Drogon (static lib; no runtime .so needed in the final image).
+RUN cd /tmp && git clone --depth 1 --branch v1.9.12 https://github.com/drogonframework/drogon.git \
+    && cd drogon && git submodule update --init \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_EXAMPLES=OFF -DBUILD_CTL=OFF -DBUILD_ORM=OFF \
+        -DBUILD_POSTGRESQL=OFF -DBUILD_MYSQL=OFF -DBUILD_SQLITE=OFF \
+        -DBUILD_REDIS=OFF -DBUILD_TESTING=OFF \
+    && cmake --build build -j"$(nproc)" && cmake --install build \
+    && rm -rf /tmp/drogon
+
+# TensorRT — the cuda-12.9 tarball of the same 10.16.0.72 the project pins.
+# NV_TENSORRT_{MAJOR,MINOR,PATCH} land in the engine cache key, so this version
+# must match whatever built the engines you intend to mount.
+ARG TRT_VERSION=10.16.0.72
+ARG TRT_CUDA=12.9
+RUN cd /usr/local && \
+    curl -fsSL "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/${TRT_VERSION%.*}/tars/TensorRT-${TRT_VERSION}.Linux.x86_64-gnu.cuda-${TRT_CUDA}.tar.gz" \
+      | tar xzf - --wildcards \
+          "TensorRT-${TRT_VERSION}/include/*" \
+          "TensorRT-${TRT_VERSION}/lib/*.so*" \
+    && ln -sfn "/usr/local/TensorRT-${TRT_VERSION}" /usr/local/tensorrt
+
+# ONNX Runtime — CUDA-12 GPU build. Only the opt-in formula backend creates ORT
+# sessions, but CMake hard-requires the CUDA EP at configure time.
+ARG ORT_VERSION=1.22.0
+RUN cd /tmp && \
+    curl -fsSL -O "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && tar xzf "onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && mkdir -p /src/third_party/onnxruntime \
+    && cp -r "onnxruntime-linux-x64-gpu-${ORT_VERSION}/include" \
+             "onnxruntime-linux-x64-gpu-${ORT_VERSION}/lib" /src/third_party/onnxruntime/ \
+    && rm -rf /tmp/onnxruntime*
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY proto/ proto/
+COPY include/ include/
+COPY src/ src/
+COPY tools/ tools/
+COPY third_party/ third_party/
+COPY tests/ tests/
+COPY scripts/ scripts/
+COPY bin/ bin/
+
+# fastpdf2png must be rebuilt: the vendored binary needs glibc 2.38 and this
+# base is glibc 2.35. Removing it first forces the installer to rebuild.
+RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
+    && cp bin/libpdfium.so /usr/lib/ && ldconfig
+
+# CMAKE_CUDA_ARCHITECTURES must cover the deployment GPU. 89 = Ada (L40S, L4,
+# RTX 40xx). Engines are per-architecture anyway, so a mounted cache is only
+# valid on the arch it was built for.
+ARG CUDA_ARCH=89
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DTENSORRT_DIR=/usr/local/tensorrt \
+        -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+        -DFETCH_MODELS=OFF \
+    && cmake --build build -j"$(nproc)" --target turboocr-server
+
+# Models are fetched here rather than COPYed so the ONNX mtimes come from the
+# release's Last-Modified headers. Those mtimes are part of the engine cache
+# key, and wget preserves them, which is what makes a cache built elsewhere
+# reusable here.
+RUN bash scripts/fetch_release_models.sh
+
+# ------------------------------------------------------------
+# Stage 2 — runtime
+# ------------------------------------------------------------
+FROM ${CUDA_RUNTIME_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Shared libraries the server links against. Drogon/trantor are static and
+# absent by design.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libopencv-core4.5d libopencv-imgproc4.5d libopencv-imgcodecs4.5d \
+        libgrpc++1 libprotobuf23 libjsoncpp25 libcurl4 libturbojpeg \
+        libssl3 libc-ares2 libuuid1 zlib1g curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TRT_VERSION=10.16.0.72
+# Only the two directly-linked TRT libs plus the sm_89 builder resource are
+# copied. The builder resource is needed only when an engine has to be built
+# from ONNX (a cache miss); drop it to save ~250 MB if you always mount a warm
+# cache and can tolerate a hard failure on a miss.
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm89.so.* /usr/local/tensorrt/lib/
+
+COPY --from=builder /src/third_party/onnxruntime/lib/ /usr/local/lib/
+COPY --from=builder /usr/lib/libpdfium.so /usr/lib/
+
+WORKDIR /app
+COPY --from=builder /src/build/turboocr-server ./build/turboocr-server
+COPY --from=builder /src/bin/ ./bin/
+# Preserves the ONNX mtimes from the builder stage, keeping the cache key stable.
+COPY --from=builder /src/models/ ./models/
+
+ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
+RUN ldconfig
+
+# Default cache location. Mount a pre-built cache here (or point
+# TRT_ENGINE_CACHE elsewhere) to skip the multi-hour first-start engine build.
+ENV TRT_ENGINE_CACHE=/engines
+RUN mkdir -p /engines
+VOLUME ["/engines"]
+
+ENV OCR_MODEL=medium \
+    LOG_FORMAT=json \
+    HTTP_PORT=8080
+
+EXPOSE 8080 50051
+
+# start-period is generous because a cold cache rebuilds engines from ONNX,
+# which takes hours on non-Blackwell GPUs.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health/ready || exit 1
+
+ENTRYPOINT ["./build/turboocr-server"]
