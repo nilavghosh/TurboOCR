@@ -16,6 +16,65 @@ software one.
 
 ---
 
+## Quick start — run it with pre-built engines
+
+Skip the ~3 hour first-start TensorRT build by mounting the engine cache from
+this run. **Requires an Ada GPU (sm_89: L40S, L4, RTX 40xx) on a 550.x driver**
+— see [DEPLOY.md](DEPLOY.md) for the full compatibility matrix, and check it
+before you start, because a mismatched host silently rebuilds from ONNX instead
+of failing.
+
+```bash
+# 1. fetch the pre-built engines (165 MB)
+REL=https://github.com/nilavghosh/TurboOCR/releases/download/engines-l40s-sm89-trt10.16-cuda12.4
+mkdir -p /opt/turboocr-engines && cd /opt/turboocr-engines
+curl -fsSL -O "$REL/turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz"
+curl -fsSL -O "$REL/engines.sha256"
+tar xzf turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz
+sha256sum -c engines.sha256
+
+# 2. build the CUDA 12 image (from the repo root)
+cd /path/to/TurboOCR
+docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 -t turboocr:cuda12 .
+
+# 3. run with the cache mounted read-only
+docker run --gpus all -p 8080:8080 -p 50051:50051 \
+  -v /opt/turboocr-engines:/engines:ro \
+  -e TRT_ENGINE_CACHE=/engines \
+  -e OCR_MODEL=medium \
+  turboocr:cuda12
+```
+
+Ready in about **7 seconds** instead of ~3 hours. Confirm the cache was used —
+**zero is what you want**, anything else means a key mismatch and a rebuild is
+already underway:
+
+```bash
+docker logs <container> 2>&1 | grep -c "Building TRT engine"
+```
+
+Then smoke-test it:
+
+```bash
+curl -fsS http://localhost:8080/health/ready          # "ok"
+curl -X POST http://localhost:8080/ocr/raw \
+     --data-binary @tests/fixtures/images/png/receipt.png \
+     -H 'Content-Type: image/png'
+```
+
+Running natively instead of in a container? Point `TRT_ENGINE_CACHE` at the
+same directory and use `run_server.sh`:
+
+```bash
+TRT_ENGINE_CACHE=/opt/turboocr-engines bash run_server.sh
+```
+
+Reproducing the benchmarks below is covered in
+[Reproducing](#reproducing); building from source without Docker is in
+[Building without Docker](#building-without-docker).
+
+---
+
 ## Test environment
 
 | | |

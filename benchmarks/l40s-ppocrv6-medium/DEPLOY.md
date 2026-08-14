@@ -22,16 +22,19 @@ Default location is `$HOME/.cache/turbo-ocr` (overridable with
 | `doc_ori_7722513224905535437.trt` | 5.2 MB | page orientation |
 | `cls_8027655355573618557.trt` | 1.4 MB | line orientation |
 
-**229 MB total.** Packaged on the benchmark host as:
+**229 MB total.** They are **not committed to git** — the recognizer engine
+alone is 128 MB, over GitHub's 100 MB per-file limit — and are published
+instead as a release asset:
 
-```
-/workspace/turboocr-deploy/turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz   (165 MB)
-/workspace/turboocr-deploy/engines.sha256
-```
+**[`engines-l40s-sm89-trt10.16-cuda12.4`](https://github.com/nilavghosh/TurboOCR/releases/tag/engines-l40s-sm89-trt10.16-cuda12.4)**
 
-These are **not committed to git** — the recognizer engine alone is 128 MB,
-over GitHub's 100 MB per-file limit. Distribute them as a release asset, an
-object-store object, or a pre-seeded Docker volume.
+| Asset | Size |
+|---|---:|
+| `turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz` | 165 MB |
+| `engines.sha256` | checksums for the unpacked engines |
+
+Check the compatibility table below before downloading — a mismatched host
+rebuilds from ONNX rather than failing, which costs hours.
 
 ---
 
@@ -125,10 +128,13 @@ binary is compiled against.
 ## Running with a mounted cache
 
 ```bash
-# one-time: unpack the engines somewhere the daemon can read
-mkdir -p /opt/turboocr-engines
-tar xzf turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz -C /opt/turboocr-engines
-sha256sum -c engines.sha256   # run from inside that directory
+# one-time: fetch and unpack the engines somewhere the daemon can read
+REL=https://github.com/nilavghosh/TurboOCR/releases/download/engines-l40s-sm89-trt10.16-cuda12.4
+mkdir -p /opt/turboocr-engines && cd /opt/turboocr-engines
+curl -fsSL -O "$REL/turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz"
+curl -fsSL -O "$REL/engines.sha256"
+tar xzf turboocr-engines-l40s-sm89-trt10.16-cuda12.4.tar.gz
+sha256sum -c engines.sha256
 
 docker run --gpus all -p 8080:8080 -p 50051:50051 \
   -v /opt/turboocr-engines:/engines:ro \

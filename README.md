@@ -164,6 +164,18 @@ On a single RTX 5090, vs every common OCR engine:
 
 → [Full benchmarks & methodology](docs/benchmarks/comparison.md)
 
+### Reproduction on other hardware
+
+An independent run of the `medium` tier on an **NVIDIA L40S**, built natively
+against the CUDA 12 stack (no Docker), reproduces the published accuracy —
+**92.34% FUNSD word F1** vs 91.9% claimed — at 48.5 img/s, 56% of the RTX 5090
+figure. It also ships a configurable Locust load test, a CUDA 12 Dockerfile for
+hosts on a 12.x driver, and **pre-built TensorRT engines** that cut first start
+from ~3 hours to ~7 seconds on Ada GPUs.
+
+→ [L40S benchmark & deployment guide](benchmarks/l40s-ppocrv6-medium/) ·
+[pre-built engines](https://github.com/nilavghosh/TurboOCR/releases/tag/engines-l40s-sm89-trt10.16-cuda12.4)
+
 ---
 
 ## Models
