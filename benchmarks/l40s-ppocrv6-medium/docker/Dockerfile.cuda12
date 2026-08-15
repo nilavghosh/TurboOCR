@@ -156,6 +156,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl3 libc-ares2 libuuid1 zlib1g curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# GCC 13's libstdc++. The tree needs std::format, so the builder installs gcc-13
+# from the toolchain PPA and the binary ends up referencing GLIBCXX_3.4.31 and
+# GLIBCXX_3.4.32. This runtime base is stock jammy, whose libstdc++6 is GCC 12
+# (GLIBCXX_3.4.30 at most), so the server dies immediately with
+#   version `GLIBCXX_3.4.32' not found (required by ./build/turboocr-server)
+# Copying the builder's own libstdc++/libgcc guarantees the exact runtime the
+# binary was linked against, with no PPA-version drift between the two stages.
+# ldconfig (below) re-points the libstdc++.so.6 SONAME symlink at the newer file.
+# docker/Dockerfile.gpu is unaffected: its nvcr base already ships a newer GCC.
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/
+
 ARG TRT_VERSION=10.16.0.72
 ARG CUDA_ARCH=90
 # Only the two directly-linked TRT libs plus the sm_${CUDA_ARCH} builder
@@ -178,7 +190,16 @@ COPY --from=builder /src/bin/ ./bin/
 COPY --from=builder /src/models/ ./models/
 
 ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
-RUN ldconfig
+# Fail the BUILD on an ABI mismatch rather than the pod. ldd -r resolves symbol
+# versions, so a stale libstdc++/libgcc surfaces here instead of as a crash loop
+# minutes into a deploy. libcuda.so.1 is injected by the container runtime and
+# is legitimately absent at build time, so only version-tag failures are matched.
+RUN ldconfig \
+    && if ldd -r ./build/turboocr-server 2>&1 | grep -qE "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]"; then \
+         echo "FATAL: runtime stage is missing libstdc++/libgcc symbols the binary needs:" >&2; \
+         ldd -r ./build/turboocr-server 2>&1 | grep -E "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]" >&2; \
+         exit 1; \
+       fi
 
 # ------------------------------------------------------------
 # Toolchain identity — stamped into the image

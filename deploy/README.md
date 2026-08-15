@@ -427,6 +427,9 @@ matters far more to throughput than the model tier does.
 | `ERROR: … is missing and /models is not writable` | read-only mount, no engines for this variant | warm it read-write first |
 | `ERROR: nvidia-smi not found` | container started without GPU | add `--gpus all` |
 | Container exits at startup, `GLIBC_2.38 not found` | vendored `fastpdf2png` vs the base image's glibc | already handled in these Dockerfiles (rebuilt from source) |
+| Container restart-loops, `GLIBCXX_3.4.31/32 not found` | binary built with gcc-13 but the runtime stage has stock jammy's GCC 12 libstdc++ | already handled: the CUDA-12 Dockerfiles copy the builder's `libstdc++.so.6.0.*` and `libgcc_s.so.1`, and assert with `ldd -r` at build time |
+| `CMake Error: … Unrecognized "version" field` during build | apt cmake (3.22) vs fastpdf2png's presets v6 / `cmake_minimum_required(3.25)` | already handled: the builder installs cmake 3.31.6 from Kitware |
+| `Failed to build engine` on a cold cache, no other detail | image's `CUDA_ARCH` ≠ the GPU, so `libnvinfer_builder_resource_sm<arch>.so` is absent | rebuild with the right `--build-arg CUDA_ARCH` |
 | Fatal `cuda_ptr.h - out of memory` at startup | pool too large for the card | set `PIPELINE_POOL_SIZE` — see [VRAM and pipeline pool size](#vram-and-pipeline-pool-size); auto-sizing under-estimates by ~4× on `medium` |
 | `/health/ready` returns 503 forever | engines still building, or a fatal init error | check logs; a CUDA OOM here usually means another process holds the GPU |
 | PaddleX client gets `null` images | `visualize` is unsupported by design | see [PADDLEX_COMPAT.md](../compat/paddlex/PADDLEX_COMPAT.md) |
