@@ -13,19 +13,24 @@
 # so CUDA_RUNTIME, TENSORRT and the host driver all have to match the machine
 # the engines were built on. See ../DEPLOY.md for the full compatibility matrix.
 #
+# CUDA_ARCH defaults to 90 (Hopper/H100) because that is what this image is
+# deployed onto. The directory name is historical — the medium-tier benchmark
+# numbers under ../ were measured on an L40S (sm89). Building for the L40S
+# still works, it just needs --build-arg CUDA_ARCH=89.
+#
 # Build (the toolchain triple is build-time — see deploy/README.md):
 #   docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
-#     --build-arg CUDA_ARCH=89 --build-arg CUDA_RUNTIME=12.4 \
+#     --build-arg CUDA_ARCH=90 --build-arg CUDA_RUNTIME=12.4 \
 #     --build-arg TRT_VERSION=10.16.0.72 --build-arg TRT_CUDA=12.9 \
-#     -t turboocr:cuda12-sm89 .
+#     -t turboocr:cuda12-sm90 .
 #
 # Run — engines are picked out of /models by GPU + toolchain automatically:
 #   docker run --gpus all -p 8080:8080 -p 50051:50051 \
-#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:cuda12-sm89
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:cuda12-sm90
 #
 # Pre-bake a cache without serving:
 #   docker run --rm --gpus all -v turboocr-models:/models \
-#     -e WARM_ONLY=1 -e OCR_MODEL=medium -e TRT_OPT_LEVEL=3 turboocr:cuda12-sm89
+#     -e WARM_ONLY=1 -e OCR_MODEL=medium -e TRT_OPT_LEVEL=3 turboocr:cuda12-sm90
 # ============================================================
 
 ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
@@ -120,10 +125,10 @@ RUN cd /tmp && \
 RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
     && cp bin/libpdfium.so /usr/lib/ && ldconfig
 
-# CMAKE_CUDA_ARCHITECTURES must cover the deployment GPU. 89 = Ada (L40S, L4,
-# RTX 40xx). Engines are per-architecture anyway, so a mounted cache is only
-# valid on the arch it was built for.
-ARG CUDA_ARCH=89
+# CMAKE_CUDA_ARCHITECTURES must cover the deployment GPU. 90 = Hopper (H100,
+# H200); 89 = Ada (L40S, L4, RTX 40xx). Engines are per-architecture anyway, so
+# a mounted cache is only valid on the arch it was built for.
+ARG CUDA_ARCH=90
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
         -DTENSORRT_DIR=/usr/local/tensorrt \
         -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
@@ -152,11 +157,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TRT_VERSION=10.16.0.72
-ARG CUDA_ARCH=89
-# Only the two directly-linked TRT libs plus the sm_89 builder resource are
-# copied. The builder resource is needed only when an engine has to be built
-# from ONNX (a cache miss); drop it to save ~250 MB if you always mount a warm
-# cache and can tolerate a hard failure on a miss.
+ARG CUDA_ARCH=90
+# Only the two directly-linked TRT libs plus the sm_${CUDA_ARCH} builder
+# resource are copied. That resource is dlopen()'d by bare name when an engine
+# has to be built from ONNX (a cache miss), so this ARG must match the builder
+# stage: an image whose CUDA_ARCH differs from the deployment GPU fails the
+# build with an opaque "Failed to build engine". Drop it to save ~250 MB if you
+# always mount a warm cache and can tolerate a hard failure on a miss.
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/

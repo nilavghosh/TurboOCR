@@ -237,16 +237,16 @@ and writes only its own variant.
 
 ```bash
 docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
-  --build-arg CUDA_ARCH=89 \
+  --build-arg CUDA_ARCH=90 \
   --build-arg CUDA_RUNTIME=12.4 \
   --build-arg TRT_VERSION=10.16.0.72 \
   --build-arg TRT_CUDA=12.9 \
-  -t turboocr:cuda12-sm89 .
+  -t turboocr:cuda12-sm90 .
 ```
 
 | Arg | Default | Notes |
 |---|---|---|
-| `CUDA_ARCH` | `89` | `86` Ampere · `89` Ada · `90` Hopper/H100 · `120` Blackwell |
+| `CUDA_ARCH` | `90` | `86` Ampere · `89` Ada/L40S · `90` Hopper/H100 · `120` Blackwell |
 | `CUDA_RUNTIME` | `12.4` | must match `CUDA_IMAGE`; lands in the cache key |
 | `CUDA_IMAGE` / `CUDA_RUNTIME_IMAGE` | `nvidia/cuda:12.4.1-*-ubuntu22.04` | change together with `CUDA_RUNTIME` |
 | `TRT_VERSION` | `10.16.0.72` | lands in the cache key |
@@ -254,7 +254,12 @@ docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
 | `ORT_VERSION` | `1.22.0` | CUDA-12 GPU build |
 
 `CUDA_ARCH` also selects which TensorRT builder-resource library is copied into
-the runtime stage, keeping the image lean.
+the runtime stage, keeping the image lean. It is therefore not merely a codegen
+hint: an image built for one architecture cannot build engines on another, and a
+cold cache on a mismatched card fails with an opaque "Failed to build engine".
+The default is `90` because that is the deployment target; the `l40s-` directory
+name reflects where the medium-tier benchmarks were measured, not what the image
+defaults to. For an L40S pass `--build-arg CUDA_ARCH=89`.
 
 **Why a CUDA 12 image at all:** the upstream `ghcr.io/aiptimizer/turboocr` is
 built on CUDA 13 and needs driver 580+. On a 550.x host it will not run, and
