@@ -83,10 +83,84 @@ The workload is **GPU-bound, not VRAM-bound** — 93–99% GPU utilisation again
 under 6% CPU. `PIPELINE_POOL_SIZE` auto-sizes from VRAM but **caps at 5**,
 because throughput plateaus there (`include/turbo_ocr/server/bootstrap/pool_sizing.h`).
 An 80 GB H100 gets the same pool as a 46 GB L40S; buying VRAM buys nothing here.
+VRAM still sets a *floor*, though — see
+[VRAM and pipeline pool size](#vram-and-pipeline-pool-size) before deploying to
+anything smaller than ~40 GB.
 
 Rough capacity, `small` tier: **~143 img/s per L40S.** Scale out with more
 cards rather than up to a bigger one — and note these numbers were taken on a
 thermally throttled chassis, so a well-cooled host does better.
+
+### VRAM and pipeline pool size
+
+Measured on the L40S, both tiers, by varying `PIPELINE_POOL_SIZE`. Usage is
+cleanly linear in the pool size:
+
+| Pool | `medium` | `small` |
+|---:|---:|---:|
+| 1 | 8,271 MiB | 5,775 MiB |
+| 2 | 16,009 MiB | 11,015 MiB |
+| 3 | 23,779 MiB | 16,259 MiB |
+| 5 *(default)* | **39,283 MiB** | **26,773 MiB** |
+
+Which fits:
+
+```
+medium ≈  518 MiB + 7,753 MiB × pool
+small  ≈  526 MiB + 5,250 MiB × pool
+```
+
+Use it to check a card before deploying to it:
+
+| GPU | VRAM | Max pool, `medium` | Max pool, `small` |
+|---|---:|---:|---:|
+| L40S / A6000 Ada | 46 GB | 5 *(default)* | 5 *(default)* |
+| A100 | 40 GB | 5 | 5 |
+| **L4** | **24 GB** | **2** | **4** |
+| A10 / A10G / RTX 4090 | 24 GB | 2 | 4 |
+| RTX 4000 Ada | 20 GB | 2 | 3 |
+| A2 / T4 | 16 GB | 1 | 2 |
+
+This table is about **VRAM only**. Engine *compatibility* is a separate axis:
+only Ada cards (`sm_89` — L40S, L4, RTX 40xx, RTX 4000 Ada) share engines with
+the published Ada bundles. A10/A10G are Ampere (`sm_86`) and T4 is Turing
+(`sm_75`); both need their own variant built. See
+[Build-time vs runtime](#build-time-vs-runtime).
+
+### Running on an L4 (or any 24 GB card)
+
+**The engines transfer without a rebuild.** An L4 is AD104 — compute capability
+**8.9**, the same `sm_89` as an L40S — so the cache key matches and the
+entrypoint resolves the same variant directory. The one thing to confirm is the
+driver: `cudaDriverGetVersion()` is part of the key, so the L4 host must report
+the same CUDA version (a 550.x driver reports 12.4). On a different driver
+branch it becomes a different variant and rebuilds.
+
+**But you must set the pool size by hand.** Neither tier fits at the default
+pool of 5 on 24 GB:
+
+```bash
+docker run --gpus all -p 8080:8080 \
+  -v turboocr-models:/models:ro \
+  -e OCR_MODEL=small -e PIPELINE_POOL_SIZE=4 \
+  turboocr:cuda12-sm89
+```
+
+Use `PIPELINE_POOL_SIZE=2` for `medium`. Leave a pipeline of headroom if you
+also enable tables or formulas, which load further engines.
+
+> **Auto-sizing will not protect you here.** `compute_pipeline_pool_size()`
+> sees 24 GB ≥ 14 GB and selects 5. Its safety check then estimates **2 GiB per
+> pipeline** — roughly **4× too low for `medium`** — concludes that 11 would
+> fit, and leaves the pool at 5. The card then OOMs during warmup with a fatal
+> `cuda_ptr.h - out of memory`. On any card below ~40 GB, set
+> `PIPELINE_POOL_SIZE` explicitly rather than trusting the default.
+
+Set expectations on throughput separately from VRAM: an L4 is a 72 W part
+against the L40S's 350 W with roughly a third of the memory bandwidth, so
+expect well under a third of the ~143 img/s measured for `small` — and a
+smaller pool compounds that. For throughput per pound, the L40S is the better
+card here.
 
 ### API
 
@@ -348,6 +422,7 @@ matters far more to throughput than the model tier does.
 | `ERROR: … is missing and /models is not writable` | read-only mount, no engines for this variant | warm it read-write first |
 | `ERROR: nvidia-smi not found` | container started without GPU | add `--gpus all` |
 | Container exits at startup, `GLIBC_2.38 not found` | vendored `fastpdf2png` vs the base image's glibc | already handled in these Dockerfiles (rebuilt from source) |
+| Fatal `cuda_ptr.h - out of memory` at startup | pool too large for the card | set `PIPELINE_POOL_SIZE` — see [VRAM and pipeline pool size](#vram-and-pipeline-pool-size); auto-sizing under-estimates by ~4× on `medium` |
 | `/health/ready` returns 503 forever | engines still building, or a fatal init error | check logs; a CUDA OOM here usually means another process holds the GPU |
 | PaddleX client gets `null` images | `visualize` is unsupported by design | see [PADDLEX_COMPAT.md](../compat/paddlex/PADDLEX_COMPAT.md) |
 | Throughput well below the tables above | thermal throttling | check SM clock and throttle reasons |
@@ -368,7 +443,7 @@ matters far more to throughput than the model tier does.
 | `TURBO_ENGINE_VARIANT` | *composed* | override the whole variant directory name |
 | `TRT_OPT_LEVEL` | `5` | in the cache key; `3` builds much faster |
 | `WARM_ONLY` | `0` | `1` = build engines and exit |
-| `PIPELINE_POOL_SIZE` | *auto* | pipeline replicas; auto-sizes from VRAM, caps at 5 |
+| `PIPELINE_POOL_SIZE` | *auto* | pipeline replicas; auto-sizes from VRAM and caps at 5. **Set explicitly below ~40 GB** — see [VRAM and pipeline pool size](#vram-and-pipeline-pool-size) |
 | `DET_MAX_SIDE_LIMIT` | `1280` | detection resolution; **in the cache key** |
 | `DISABLE_LAYOUT` | `0` | skip loading the layout model |
 | `TABLE_BACKEND` / `FORMULA_BACKEND` | — | opt-in table → HTML, formula → LaTeX |
