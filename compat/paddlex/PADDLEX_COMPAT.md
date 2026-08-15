@@ -251,11 +251,17 @@ says nothing about your invoices.
 ## Running
 
 ```bash
-docker build -f compat/paddlex/Dockerfile.paddlex -t turboocr:paddlex .
+docker build -f compat/paddlex/Dockerfile.paddlex \
+  --build-arg CUDA_ARCH=89 -t turboocr:paddlex-sm89 .
+
+# Engines are resolved out of /models by GPU + toolchain automatically.
 docker run --gpus all -p 8080:8080 \
-  -v /opt/turboocr-engines:/engines:ro -e TRT_ENGINE_CACHE=/engines \
-  turboocr:paddlex
+  -v turboocr-models:/models -e OCR_MODEL=medium \
+  turboocr:paddlex-sm89
 ```
+
+See [`deploy/README.md`](../../deploy/README.md) for the volume layout and the
+full environment/build-arg matrix.
 
 Standalone, against an existing TurboOCR server:
 

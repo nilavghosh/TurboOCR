@@ -10,11 +10,12 @@
 # hostname change.
 #
 # Build:
-#   docker build -f compat/paddlex/Dockerfile.paddlex -t turboocr:paddlex .
-# Run (with a pre-built engine cache):
+#   docker build -f compat/paddlex/Dockerfile.paddlex \
+#     --build-arg CUDA_ARCH=89 --build-arg CUDA_RUNTIME=12.4 \
+#     -t turboocr:paddlex-sm89 .
+# Run — engines resolved out of /models by GPU + toolchain (deploy/README.md):
 #   docker run --gpus all -p 8080:8080 \
-#     -v /opt/turboocr-engines:/engines:ro -e TRT_ENGINE_CACHE=/engines \
-#     turboocr:paddlex
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:paddlex-sm89
 #   curl -X POST http://localhost:8080/ocr \
 #     -H 'Content-Type: application/json' \
 #     -d "{\"file\": \"$(base64 -w0 page.png)\", \"fileType\": 1}"
@@ -113,9 +114,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TRT_VERSION=10.16.0.72
+ARG CUDA_ARCH=89
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
-COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm89.so.* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/
 
 COPY --from=builder /src/third_party/onnxruntime/lib/ /usr/local/lib/
 COPY --from=builder /usr/lib/libpdfium.so /usr/lib/
@@ -129,18 +131,53 @@ COPY --from=builder /src/models/ ./models/
 COPY compat/paddlex/requirements.txt /app/compat/paddlex/requirements.txt
 RUN pip3 install --no-cache-dir -r /app/compat/paddlex/requirements.txt
 COPY compat/paddlex/paddlex_adapter.py /app/compat/paddlex/paddlex_adapter.py
-COPY compat/paddlex/entrypoint.sh /app/compat/paddlex/entrypoint.sh
-RUN chmod +x /app/compat/paddlex/entrypoint.sh
+COPY deploy/entrypoint.sh /app/deploy/entrypoint.sh
+RUN chmod +x /app/deploy/entrypoint.sh
 
 ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
 RUN ldconfig
 
-ENV TRT_ENGINE_CACHE=/engines
-RUN mkdir -p /engines
-VOLUME ["/engines"]
+# ------------------------------------------------------------
+# Toolchain identity — stamped into the image
+# ------------------------------------------------------------
+# These are BUILD-time facts, not runtime knobs. CUDA_RUNTIME is the CUDA the
+# binary is compiled against and TRT_VERSION is the TensorRT linked into it;
+# both are folded into the TensorRT engine cache key, so the entrypoint has to
+# know them to resolve the right cache directory. Exposing them as ENV lets the
+# entrypoint report and use them; overriding them at `docker run` would rename
+# the cache directory without changing what the binary links, which is exactly
+# how an incompatible cache gets mounted and silently rebuilt.
+ARG CUDA_RUNTIME=12.4
+ENV TURBO_CUDA_RUNTIME=${CUDA_RUNTIME}
+ENV TURBO_TRT_VERSION=${TRT_VERSION}
+ENV TURBO_CUDA_ARCH=${CUDA_ARCH}
+LABEL org.turboocr.cuda-runtime="${CUDA_RUNTIME}" \
+      org.turboocr.tensorrt="${TRT_VERSION}" \
+      org.turboocr.cuda-arch="${CUDA_ARCH}"
 
+# ------------------------------------------------------------
+# Models volume
+# ------------------------------------------------------------
+# /models holds engines/<variant>/ subdirectories, one per
+# (GPU arch, CUDA driver, CUDA runtime, TensorRT) combination. The entrypoint
+# picks the right one; the model tier is selected by OCR_MODEL and needs no
+# separate directory, because tiny/small/medium engines hash differently and
+# coexist safely in the same variant folder.
+ENV MODELS_DIR=/models
+RUN mkdir -p /models/engines
+VOLUME ["/models"]
+
+# Runtime-selectable knobs.
+#   OCR_MODEL      tiny | small | medium (+ arabic, eslav, korean, thai, greek)
+#   GPU_DEVICE     which physical GPU to bind on a multi-GPU host
+#   GPU_ARCH       override the auto-detected sm_XX (rarely needed)
+#   TRT_OPT_LEVEL  3 builds far faster than the default 5, slightly slower engines
+#   WARM_ONLY=1    build engines into the volume and exit, serving nothing
 ENV OCR_MODEL=medium \
     LOG_FORMAT=json \
+    TRT_OPT_LEVEL=5
+
+ENV PADDLEX_API=1 \
     TURBO_PORT=8081 \
     PADDLEX_PORT=8080 \
     PADDLEX_WORKERS=4
@@ -153,4 +190,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
     CMD curl -fsS http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["/app/compat/paddlex/entrypoint.sh"]
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]

@@ -13,13 +13,19 @@
 # so CUDA_RUNTIME, TENSORRT and the host driver all have to match the machine
 # the engines were built on. See ../DEPLOY.md for the full compatibility matrix.
 #
-# Build:
+# Build (the toolchain triple is build-time — see deploy/README.md):
 #   docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
-#                -t turboocr:cuda12 .
-# Run (with a pre-built engine cache — starts in seconds):
+#     --build-arg CUDA_ARCH=89 --build-arg CUDA_RUNTIME=12.4 \
+#     --build-arg TRT_VERSION=10.16.0.72 --build-arg TRT_CUDA=12.9 \
+#     -t turboocr:cuda12-sm89 .
+#
+# Run — engines are picked out of /models by GPU + toolchain automatically:
 #   docker run --gpus all -p 8080:8080 -p 50051:50051 \
-#     -v /path/to/engines:/engines:ro -e TRT_ENGINE_CACHE=/engines \
-#     turboocr:cuda12
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:cuda12-sm89
+#
+# Pre-bake a cache without serving:
+#   docker run --rm --gpus all -v turboocr-models:/models \
+#     -e WARM_ONLY=1 -e OCR_MODEL=medium -e TRT_OPT_LEVEL=3 turboocr:cuda12-sm89
 # ============================================================
 
 ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
@@ -130,13 +136,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TRT_VERSION=10.16.0.72
+ARG CUDA_ARCH=89
 # Only the two directly-linked TRT libs plus the sm_89 builder resource are
 # copied. The builder resource is needed only when an engine has to be built
 # from ONNX (a cache miss); drop it to save ~250 MB if you always mount a warm
 # cache and can tolerate a hard failure on a miss.
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
-COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm89.so.* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/
 
 COPY --from=builder /src/third_party/onnxruntime/lib/ /usr/local/lib/
 COPY --from=builder /usr/lib/libpdfium.so /usr/lib/
@@ -150,15 +157,46 @@ COPY --from=builder /src/models/ ./models/
 ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
 RUN ldconfig
 
-# Default cache location. Mount a pre-built cache here (or point
-# TRT_ENGINE_CACHE elsewhere) to skip the multi-hour first-start engine build.
-ENV TRT_ENGINE_CACHE=/engines
-RUN mkdir -p /engines
-VOLUME ["/engines"]
+# ------------------------------------------------------------
+# Toolchain identity — stamped into the image
+# ------------------------------------------------------------
+# These are BUILD-time facts, not runtime knobs. CUDA_RUNTIME is the CUDA the
+# binary is compiled against and TRT_VERSION is the TensorRT linked into it;
+# both are folded into the TensorRT engine cache key, so the entrypoint has to
+# know them to resolve the right cache directory. Exposing them as ENV lets the
+# entrypoint report and use them; overriding them at `docker run` would rename
+# the cache directory without changing what the binary links, which is exactly
+# how an incompatible cache gets mounted and silently rebuilt.
+ARG CUDA_RUNTIME=12.4
+ENV TURBO_CUDA_RUNTIME=${CUDA_RUNTIME}
+ENV TURBO_TRT_VERSION=${TRT_VERSION}
+ENV TURBO_CUDA_ARCH=${CUDA_ARCH}
+LABEL org.turboocr.cuda-runtime="${CUDA_RUNTIME}" \
+      org.turboocr.tensorrt="${TRT_VERSION}" \
+      org.turboocr.cuda-arch="${CUDA_ARCH}"
 
+# ------------------------------------------------------------
+# Models volume
+# ------------------------------------------------------------
+# /models holds engines/<variant>/ subdirectories, one per
+# (GPU arch, CUDA driver, CUDA runtime, TensorRT) combination. The entrypoint
+# picks the right one; the model tier is selected by OCR_MODEL and needs no
+# separate directory, because tiny/small/medium engines hash differently and
+# coexist safely in the same variant folder.
+ENV MODELS_DIR=/models
+RUN mkdir -p /models/engines
+VOLUME ["/models"]
+
+# Runtime-selectable knobs.
+#   OCR_MODEL      tiny | small | medium (+ arabic, eslav, korean, thai, greek)
+#   GPU_DEVICE     which physical GPU to bind on a multi-GPU host
+#   GPU_ARCH       override the auto-detected sm_XX (rarely needed)
+#   TRT_OPT_LEVEL  3 builds far faster than the default 5, slightly slower engines
+#   WARM_ONLY=1    build engines into the volume and exit, serving nothing
 ENV OCR_MODEL=medium \
     LOG_FORMAT=json \
-    HTTP_PORT=8080
+    TRT_OPT_LEVEL=5
+
 
 EXPOSE 8080 50051
 
@@ -167,4 +205,7 @@ EXPOSE 8080 50051
 HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
     CMD curl -fsS http://localhost:8080/health/ready || exit 1
 
-ENTRYPOINT ["./build/turboocr-server"]
+COPY deploy/entrypoint.sh /app/deploy/entrypoint.sh
+RUN chmod +x /app/deploy/entrypoint.sh
+
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]

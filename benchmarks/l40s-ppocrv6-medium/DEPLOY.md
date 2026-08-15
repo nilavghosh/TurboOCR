@@ -127,6 +127,15 @@ binary is compiled against.
 
 ## Running with a mounted cache
 
+> **Newer alternative:** [`deploy/README.md`](../../deploy/README.md) documents a
+> `/models` volume whose layout carries one directory per
+> (GPU arch, CUDA driver, CUDA runtime, TensorRT) combination, resolved
+> automatically at container start. It lets one volume serve a mixed fleet and
+> warns on a mismatch instead of silently rebuilding. The manual
+> `TRT_ENGINE_CACHE` route below still works and is what that layout uses
+> underneath.
+
+
 ```bash
 # one-time: fetch and unpack the engines somewhere the daemon can read
 REL=https://github.com/nilavghosh/TurboOCR/releases/download/engines-l40s-sm89-trt10.16-cuda12.4
