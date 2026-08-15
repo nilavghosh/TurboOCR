@@ -1,4 +1,11 @@
-# Deploying with a pre-built TensorRT engine cache
+# TensorRT engine cache — internals
+
+> **Looking for how to deploy?** Start with the
+> [deployment guide](../../deploy/README.md): build, warm, run, verify and
+> operate, with a `/models` volume that resolves the right engines
+> automatically. This page is the deep dive on *why* a cached engine is or is
+> not reusable — the cache key, component by component.
+
 
 First start builds five TensorRT engines from ONNX. On this L40S that took
 **~3 hours** at the default `TRT_OPT_LEVEL=5`. Mounting a pre-built cache

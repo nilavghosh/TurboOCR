@@ -173,7 +173,8 @@ figure. It also ships a configurable Locust load test, a CUDA 12 Dockerfile for
 hosts on a 12.x driver, and **pre-built TensorRT engines** that cut first start
 from ~3 hours to ~7 seconds on Ada GPUs.
 
-→ [L40S benchmark & deployment guide](benchmarks/l40s-ppocrv6-medium/) ·
+→ [Deployment guide](deploy/README.md) ·
+[L40S benchmarks](benchmarks/l40s-ppocrv6-medium/) ·
 [pre-built engines](https://github.com/nilavghosh/TurboOCR/releases/tag/engines-l40s-sm89-trt10.16-cuda12.4)
 
 ---
