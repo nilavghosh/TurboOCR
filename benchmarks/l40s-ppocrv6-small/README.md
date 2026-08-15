@@ -133,10 +133,22 @@ FUNSD. Measure both tiers on your own documents.
 
 ---
 
+## 4. 40-user load test — native vs PaddleX API
+
+Both APIs driven to 40 concurrent users against this same backend, run one at a
+time. The PaddleX adapter costs **~2% throughput, ~10 ms p50 and 1.2 CPU
+cores**; the GPU (93% utilized in both) does not notice it. Full numbers,
+CPU/GPU breakdown and HTML reports: **[LOAD40.md](LOAD40.md)**.
+
+---
+
 ## Files
 
 | Path | Contents |
 |---|---|
+| `LOAD40.md` | 40-user native vs PaddleX comparison |
+| `sample_resources.py` | CPU/GPU sampler used by that run |
+| `results/load40/` | Locust HTML reports, CSVs, resource samples |
 | `results/latency_small.txt` | Latency benchmark output |
 | `results/funsd_small.txt` | FUNSD accuracy + throughput |
 | `results/small_25u_stats.csv` | Locust summary |

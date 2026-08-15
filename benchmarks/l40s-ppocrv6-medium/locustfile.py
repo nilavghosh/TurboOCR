@@ -22,6 +22,7 @@ scored as a healthy request and quietly inflate the numbers.
 
 from __future__ import annotations
 
+import base64
 import itertools
 import json
 import random
@@ -37,8 +38,12 @@ _CONTENT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpe
 
 @events.init_command_line_parser.add_listener
 def _(parser):
-    parser.add_argument("--ocr-endpoint", default="/ocr/raw",
-                        help="Endpoint to load (default: /ocr/raw)")
+    parser.add_argument("--ocr-api", default="native", choices=["native", "paddlex"],
+                        help="Wire format: 'native' posts raw image bytes; "
+                             "'paddlex' posts the PaddleX JSON envelope "
+                             "(base64 file + fileType) to /ocr")
+    parser.add_argument("--ocr-endpoint", default=None,
+                        help="Endpoint to load (default: /ocr/raw for native, /ocr for paddlex)")
     parser.add_argument("--ocr-image", default=None,
                         help=f"Single image to POST (default: {DEFAULT_IMAGE})")
     parser.add_argument("--ocr-image-dir", default=None,
@@ -68,12 +73,26 @@ def _(environment, **_kwargs):
         paths = [Path(opts.ocr_image or DEFAULT_IMAGE)]
 
     for p in paths:
-        _PAYLOADS.append((p.read_bytes(), _CONTENT_TYPES[p.suffix.lower()]))
+        raw = p.read_bytes()
+        if opts.ocr_api == "paddlex":
+            # Pre-encode the PaddleX envelope once: base64-encoding per request
+            # would measure the load generator, not the server.
+            body = json.dumps({
+                "file": base64.b64encode(raw).decode(),
+                "fileType": 1,
+            }).encode()
+            _PAYLOADS.append((body, "application/json"))
+        else:
+            _PAYLOADS.append((raw, _CONTENT_TYPES[p.suffix.lower()]))
     _CYCLE = itertools.cycle(range(len(_PAYLOADS)))
 
+    if opts.ocr_endpoint is None:
+        opts.ocr_endpoint = "/ocr" if opts.ocr_api == "paddlex" else "/ocr/raw"
+
     total_mb = sum(len(b) for b, _ in _PAYLOADS) / 1e6
-    print(f"[locust] endpoint={opts.ocr_endpoint} images={len(_PAYLOADS)} "
-          f"({total_mb:.1f} MB in memory) warmup={opts.ocr_warmup}/user")
+    print(f"[locust] api={opts.ocr_api} endpoint={opts.ocr_endpoint} "
+          f"images={len(_PAYLOADS)} ({total_mb:.1f} MB in memory) "
+          f"warmup={opts.ocr_warmup}/user")
 
 
 class OCRUser(HttpUser):
@@ -84,6 +103,7 @@ class OCRUser(HttpUser):
     def on_start(self):
         opts = self.environment.parsed_options
         self.endpoint = opts.ocr_endpoint
+        self.api = opts.ocr_api
         # Stagger user start so all N users do not fire their first request on
         # the same tick, which would show up as a false latency spike.
         if len(_PAYLOADS) > 1:
@@ -112,7 +132,20 @@ class OCRUser(HttpUser):
             except json.JSONDecodeError:
                 r.failure("response was not JSON")
                 return
-            if not isinstance(payload.get("results"), list):
+            if self.api == "paddlex":
+                # PaddleX returns 200 with errorCode!=0 for some failures, so
+                # the envelope has to be checked, not just the status line.
+                if payload.get("errorCode") != 0:
+                    r.failure(f"errorCode={payload.get('errorCode')}")
+                    return
+                results = payload.get("result", {}).get("ocrResults")
+                if not isinstance(results, list) or not results:
+                    r.failure("no ocrResults")
+                    return
+                if "prunedResult" not in results[0]:
+                    r.failure("ocrResults[0] had no prunedResult")
+                    return
+            elif not isinstance(payload.get("results"), list):
                 r.failure("JSON had no 'results' array")
                 return
             r.success()
