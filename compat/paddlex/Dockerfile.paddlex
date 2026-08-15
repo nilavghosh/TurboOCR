@@ -9,13 +9,16 @@
 # binds 8081 privately, so a PaddleX client can be repointed with only a
 # hostname change.
 #
+# CUDA_ARCH defaults to 90 (Hopper/H100), matching the CUDA-12 image; pass
+# --build-arg CUDA_ARCH=89 to build for an L40S / L4 instead.
+#
 # Build:
 #   docker build -f compat/paddlex/Dockerfile.paddlex \
-#     --build-arg CUDA_ARCH=89 --build-arg CUDA_RUNTIME=12.4 \
-#     -t turboocr:paddlex-sm89 .
+#     --build-arg CUDA_ARCH=90 --build-arg CUDA_RUNTIME=12.4 \
+#     -t turboocr:paddlex-sm90 .
 # Run — engines resolved out of /models by GPU + toolchain (deploy/README.md):
 #   docker run --gpus all -p 8080:8080 \
-#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:paddlex-sm89
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:paddlex-sm90
 #   curl -X POST http://localhost:8080/ocr \
 #     -H 'Content-Type: application/json' \
 #     -d "{\"file\": \"$(base64 -w0 page.png)\", \"fileType\": 1}"
@@ -101,7 +104,9 @@ RUN cd /tmp && \
 RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
     && cp bin/libpdfium.so /usr/lib/ && ldconfig
 
-ARG CUDA_ARCH=89
+# 90 = Hopper (H100, H200), the deployment target; 89 = Ada (L40S, L4).
+# Must match the runtime stage below — see the builder-resource note there.
+ARG CUDA_ARCH=90
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
         -DTENSORRT_DIR=/usr/local/tensorrt \
         -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
@@ -125,7 +130,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TRT_VERSION=10.16.0.72
-ARG CUDA_ARCH=89
+# Selects which sm_<arch> builder resource ships in the runtime image.
+# TensorRT dlopen()s it by bare name on a cache miss, so an image whose
+# CUDA_ARCH differs from the deployment GPU cannot build engines at all —
+# it fails with an opaque "Failed to build engine".
+ARG CUDA_ARCH=90
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/

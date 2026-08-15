@@ -336,7 +336,7 @@ of quietly rebuilding for hours. Use read-write only for the warming job.
 docker run --gpus all -p 8080:8080 \
   -v turboocr-models:/models:ro \
   -e OCR_MODEL=small \
-  turboocr:paddlex-sm89
+  turboocr:paddlex-sm90
 ```
 
 The adapter owns 8080 (PaddleX's default) and the backend binds 8081 privately,

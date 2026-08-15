@@ -252,12 +252,12 @@ says nothing about your invoices.
 
 ```bash
 docker build -f compat/paddlex/Dockerfile.paddlex \
-  --build-arg CUDA_ARCH=89 -t turboocr:paddlex-sm89 .
+  --build-arg CUDA_ARCH=90 -t turboocr:paddlex-sm90 .
 
 # Engines are resolved out of /models by GPU + toolchain automatically.
 docker run --gpus all -p 8080:8080 \
   -v turboocr-models:/models -e OCR_MODEL=medium \
-  turboocr:paddlex-sm89
+  turboocr:paddlex-sm90
 ```
 
 See [`deploy/README.md`](../../deploy/README.md) for the volume layout and the
