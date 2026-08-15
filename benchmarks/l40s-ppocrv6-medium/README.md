@@ -340,10 +340,22 @@ rather than local disk.
 
 ---
 
+## 40-user load test — native vs PaddleX API
+
+Both APIs driven to 40 concurrent users against this tier, run one at a time with
+the card cooled between runs. On `medium` the PaddleX-compatible adapter costs
+**nothing measurable** — 36.0 → 36.1 req/s, mean latency 1077 → 1072 ms — because
+the GPU is already 99.7% utilized. Full numbers and CPU/GPU breakdown:
+**[LOAD40.md](LOAD40.md)**.
+
+---
+
 ## Files
 
 | Path | Contents |
 |---|---|
+| `LOAD40.md` | 40-user native vs PaddleX comparison |
+| `results/load40/` | Locust HTML reports, CSVs, resource samples |
 | `locustfile.py` | Configurable load test |
 | `run_server.sh` | Server launch used for every run here |
 | `DEPLOY.md` | Engine-cache reuse rules and container deployment |

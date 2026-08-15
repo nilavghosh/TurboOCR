@@ -96,6 +96,16 @@ below what a properly cooled L40S would deliver.
 
 ---
 
+## The same test on `medium`
+
+Repeated on the `medium` tier, the adapter costs **nothing measurable** —
+36.0 → 36.1 req/s, mean latency 1077 → 1072 ms — because that tier pins the GPU
+at 99.7% and the host has even more headroom. See
+[../l40s-ppocrv6-medium/LOAD40.md](../l40s-ppocrv6-medium/LOAD40.md). The
+heavier the model, the more free the compatibility layer becomes.
+
+---
+
 ## Reproducing
 
 ```bash
