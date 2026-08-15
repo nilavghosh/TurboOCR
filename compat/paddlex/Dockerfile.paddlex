@@ -87,6 +87,17 @@ COPY tests/ tests/
 COPY scripts/ scripts/
 COPY bin/ bin/
 
+# Jammy's apt cmake (3.22.1) cannot build fastpdf2png: it needs >= 3.25 for
+# both cmake_minimum_required and its "version": 6 CMakePresets.json.
+# Same fix as benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12.
+ARG CMAKE_VERSION=3.31.6
+RUN cd /tmp && \
+    wget -q "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" && \
+    tar xzf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/bin/* /usr/local/bin/ && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/share/* /usr/local/share/ && \
+    rm -rf /tmp/cmake*
+
 RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
     && cp bin/libpdfium.so /usr/lib/ && ldconfig
 
