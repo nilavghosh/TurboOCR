@@ -59,6 +59,23 @@ jobs:
           python3 tests/docker_endpoint_matrix.py --base-url http://127.0.0.1:18080
           kill "$SERVER_PID" 2>/dev/null || true
 
+  # Compat-adapter protocol suite. Pure Python against a mocked backend, so it
+  # needs no GPU, no models and no C++ build — it guards the wire format
+  # (Triton binary tensor framing, batch alignment, error mapping) that a
+  # client-side migration depends on.
+  compat-adapters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install adapter deps
+        run: pip install -r compat/triton/requirements.txt
+      - name: Triton/KServe v2 protocol suite
+        run: python3 compat/triton/test_adapter_offline.py
+
   # Static analysis: cppcheck (dead code + quality). Report-only.
   static-analysis:
     runs-on: ubuntu-latest

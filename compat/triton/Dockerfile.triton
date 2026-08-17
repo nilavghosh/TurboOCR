@@ -1,0 +1,223 @@
+# ============================================================
+# TurboOCR with the Triton / KServe v2 API baked in
+# ============================================================
+# Same CUDA 12 stack as benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12
+# (so a pre-built TensorRT engine cache still matches), plus a FastAPI adapter
+# that speaks the KServe v2 inference protocol — including the binary tensor
+# data extension — on the front door.
+#
+# The adapter listens on 8000, Triton's own default HTTP port, and
+# turboocr-server binds 8081 privately, so a Triton client can be repointed
+# with only a hostname change.
+#
+# CUDA_ARCH defaults to 90 (Hopper/H100); pass --build-arg CUDA_ARCH=89 for an
+# L40S / L4.
+#
+# Build:
+#   docker build -f compat/triton/Dockerfile.triton \
+#     --build-arg CUDA_ARCH=90 --build-arg CUDA_RUNTIME=12.4 \
+#     -t turboocr:triton-sm90 .
+# Run — engines resolved out of /models by GPU + toolchain (deploy/README.md):
+#   docker run --gpus all -p 8000:8000 \
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:triton-sm90
+#   curl http://localhost:8000/v2/models/ocr
+#
+# Differences from a real Triton deployment: compat/triton/TRITON_COMPAT.md
+# ============================================================
+
+ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+# ------------------------------------------------------------
+# Stage 1 — builder (identical to Dockerfile.cuda12)
+# ------------------------------------------------------------
+FROM ${CUDA_IMAGE} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg \
+    && curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x60C317803A41BA51845E371A1E9377A2BA9EF27F" \
+        | gpg --dearmor -o /usr/share/keyrings/ubuntu-toolchain-r.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/ubuntu-toolchain-r.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/toolchain-r.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        gcc-13 g++-13 \
+        build-essential pkg-config git wget cmake \
+        libopencv-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+        libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev libc-ares-dev \
+        libcurl4-openssl-dev libturbojpeg0-dev libwebp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CC=gcc-13 CXX=g++-13 CUDAHOSTCXX=g++-13
+
+RUN cd /tmp && git clone --depth 1 --branch v1.9.12 https://github.com/drogonframework/drogon.git \
+    && cd drogon && git submodule update --init \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_EXAMPLES=OFF -DBUILD_CTL=OFF -DBUILD_ORM=OFF \
+        -DBUILD_POSTGRESQL=OFF -DBUILD_MYSQL=OFF -DBUILD_SQLITE=OFF \
+        -DBUILD_REDIS=OFF -DBUILD_TESTING=OFF \
+    && cmake --build build -j"$(nproc)" && cmake --install build \
+    && rm -rf /tmp/drogon
+
+ARG TRT_VERSION=10.16.0.72
+ARG TRT_CUDA=12.9
+RUN cd /usr/local && \
+    curl -fsSL "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/${TRT_VERSION%.*}/tars/TensorRT-${TRT_VERSION}.Linux.x86_64-gnu.cuda-${TRT_CUDA}.tar.gz" \
+      | tar xzf - --wildcards \
+          "TensorRT-${TRT_VERSION}/include/*" \
+          "TensorRT-${TRT_VERSION}/lib/*.so*" \
+    && ln -sfn "/usr/local/TensorRT-${TRT_VERSION}" /usr/local/tensorrt
+
+ARG ORT_VERSION=1.22.0
+RUN cd /tmp && \
+    curl -fsSL -O "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && tar xzf "onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && mkdir -p /src/third_party/onnxruntime \
+    && cp -r "onnxruntime-linux-x64-gpu-${ORT_VERSION}/include" \
+             "onnxruntime-linux-x64-gpu-${ORT_VERSION}/lib" /src/third_party/onnxruntime/ \
+    && rm -rf /tmp/onnxruntime*
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY proto/ proto/
+COPY include/ include/
+COPY src/ src/
+COPY tools/ tools/
+COPY third_party/ third_party/
+COPY tests/ tests/
+COPY scripts/ scripts/
+COPY bin/ bin/
+
+# Jammy's apt cmake (3.22.1) cannot build fastpdf2png: it needs >= 3.25 for
+# both cmake_minimum_required and its "version": 6 CMakePresets.json.
+# Same fix as benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12.
+ARG CMAKE_VERSION=3.31.6
+RUN cd /tmp && \
+    wget -q "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" && \
+    tar xzf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/bin/* /usr/local/bin/ && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/share/* /usr/local/share/ && \
+    rm -rf /tmp/cmake*
+
+RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
+    && cp bin/libpdfium.so /usr/lib/ && ldconfig
+
+# 90 = Hopper (H100, H200), the deployment target; 89 = Ada (L40S, L4).
+# Must match the runtime stage below — see the builder-resource note there.
+ARG CUDA_ARCH=90
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DTENSORRT_DIR=/usr/local/tensorrt \
+        -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+        -DFETCH_MODELS=OFF \
+    && cmake --build build -j"$(nproc)" --target turboocr-server
+
+RUN bash scripts/fetch_release_models.sh
+
+# ------------------------------------------------------------
+# Stage 2 — runtime + Triton adapter
+# ------------------------------------------------------------
+FROM ${CUDA_RUNTIME_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libopencv-core4.5d libopencv-imgproc4.5d libopencv-imgcodecs4.5d \
+        libgrpc++1 libprotobuf23 libjsoncpp25 libcurl4 libturbojpeg \
+        libssl3 libc-ares2 libuuid1 zlib1g curl ca-certificates \
+        python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# GCC 13's libstdc++ — the binary references GLIBCXX_3.4.31/3.4.32 (std::format
+# needs gcc-13, installed from the toolchain PPA in the builder), but stock
+# jammy ships GCC 12's libstdc++6 and the server dies at exec with
+#   version `GLIBCXX_3.4.32' not found (required by ./build/turboocr-server)
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/
+
+ARG TRT_VERSION=10.16.0.72
+# Selects which sm_<arch> builder resource ships in the runtime image.
+# TensorRT dlopen()s it by bare name on a cache miss, so an image whose
+# CUDA_ARCH differs from the deployment GPU cannot build engines at all —
+# it fails with an opaque "Failed to build engine".
+ARG CUDA_ARCH=90
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/
+
+COPY --from=builder /src/third_party/onnxruntime/lib/ /usr/local/lib/
+COPY --from=builder /usr/lib/libpdfium.so /usr/lib/
+
+WORKDIR /app
+COPY --from=builder /src/build/turboocr-server ./build/turboocr-server
+COPY --from=builder /src/bin/ ./bin/
+COPY --from=builder /src/models/ ./models/
+
+# Adapter layer last: editing it does not invalidate the C++ build above.
+COPY compat/triton/requirements.txt /app/compat/triton/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/compat/triton/requirements.txt
+COPY compat/triton/triton_adapter.py /app/compat/triton/triton_adapter.py
+COPY deploy/entrypoint.sh /app/deploy/entrypoint.sh
+RUN chmod +x /app/deploy/entrypoint.sh
+
+ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
+# Fail the BUILD on an ABI mismatch rather than the pod. libcuda.so.1 is
+# injected by the container runtime and legitimately absent here, so only
+# symbol-version failures are matched.
+RUN ldconfig \
+    && if ldd -r ./build/turboocr-server 2>&1 | grep -qE "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]"; then \
+         echo "FATAL: runtime stage is missing libstdc++/libgcc symbols the binary needs:" >&2; \
+         ldd -r ./build/turboocr-server 2>&1 | grep -E "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]" >&2; \
+         exit 1; \
+       fi
+
+# ------------------------------------------------------------
+# Toolchain identity — stamped into the image
+# ------------------------------------------------------------
+# BUILD-time facts, not runtime knobs: both are folded into the TensorRT engine
+# cache key, so the entrypoint has to know them to resolve the right cache
+# directory. Overriding them at `docker run` would rename the cache directory
+# without changing what the binary links.
+ARG CUDA_RUNTIME=12.4
+ENV TURBO_CUDA_RUNTIME=${CUDA_RUNTIME}
+ENV TURBO_TRT_VERSION=${TRT_VERSION}
+ENV TURBO_CUDA_ARCH=${CUDA_ARCH}
+LABEL org.turboocr.cuda-runtime="${CUDA_RUNTIME}" \
+      org.turboocr.tensorrt="${TRT_VERSION}" \
+      org.turboocr.cuda-arch="${CUDA_ARCH}"
+
+# ------------------------------------------------------------
+# Models volume
+# ------------------------------------------------------------
+ENV MODELS_DIR=/models
+RUN mkdir -p /models/engines
+VOLUME ["/models"]
+
+# Runtime-selectable knobs.
+#   OCR_MODEL      tiny | small | medium (+ arabic, eslav, korean, thai, greek)
+#   GPU_DEVICE     which physical GPU to bind on a multi-GPU host
+#   TRT_OPT_LEVEL  3 builds far faster than the default 5, slightly slower engines
+#   WARM_ONLY=1    build engines into the volume and exit, serving nothing
+ENV OCR_MODEL=medium \
+    LOG_FORMAT=json \
+    TRT_OPT_LEVEL=5
+
+# TRITON_MODEL_NAME/VERSION default to ocr/1 so a deployment replacing a Triton
+# server whose model was called "ocr" needs no client-side change.
+ENV TRITON_API=1 \
+    TURBO_PORT=8081 \
+    TRITON_PORT=8000 \
+    TRITON_WORKERS=4 \
+    TRITON_MODEL_NAME=ocr \
+    TRITON_MODEL_VERSION=1
+
+# Only the Triton-compatible port is published; 8081 stays internal.
+EXPOSE 8000
+
+# Probes the adapter, which in turn probes the backend — so an unhealthy
+# backend cannot pass as healthy. /v2/health/ready is the KServe readiness
+# probe, matching what an existing Triton deployment's probes already call.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
+    CMD curl -fsS http://localhost:8000/v2/health/ready || exit 1
+
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]

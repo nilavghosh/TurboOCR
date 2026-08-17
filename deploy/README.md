@@ -164,15 +164,21 @@ card here.
 
 ### API
 
-| | Native | PaddleX-compatible |
-|---|---|---|
-| Image | `Dockerfile.cuda12` | `Dockerfile.paddlex` |
-| Endpoint | `/ocr/raw`, `/ocr/pdf`, … | `POST /ocr`, `GET /health` |
-| Overhead | — | **0% on medium**, 2.1% on small |
+| | Native | PaddleX-compatible | Triton-compatible |
+|---|---|---|---|
+| Image | `Dockerfile.cuda12` | `Dockerfile.paddlex` | `Dockerfile.triton` |
+| Port | 8080 | 8080 | 8000 |
+| Endpoint | `/ocr/raw`, `/ocr/pdf`, … | `POST /ocr`, `GET /health` | `POST /v2/models/{m}/infer`, `GET /v2/health/ready` |
+| Overhead | — | **0% on medium**, 2.1% on small | not separately measured |
 
-The compat layer is effectively free — on `medium` the GPU is already 99.7%
-utilised, so the adapter's CPU work hides entirely. Differences from a real
-PaddleX deployment: [PADDLEX_COMPAT.md](../compat/paddlex/PADDLEX_COMPAT.md).
+Each compat image serves exactly one protocol — `PADDLEX_API=1` and
+`TRITON_API=1` are mutually exclusive and the entrypoint refuses both. The
+adapter layer is effectively free: on `medium` the GPU is already 99.7%
+utilised, so its CPU work hides entirely.
+
+Differences from the real thing:
+[PADDLEX_COMPAT.md](../compat/paddlex/PADDLEX_COMPAT.md) ·
+[TRITON_COMPAT.md](../compat/triton/TRITON_COMPAT.md).
 
 ---
 
@@ -351,6 +357,32 @@ Set `PADDLEX_STRICT_PARAMS=1` while migrating: it turns silently-ignored
 parameters into a 422 naming them, so you find out which callers depend on
 knobs this backend cannot honour.
 
+### Triton / KServe v2 API
+
+```bash
+docker run --gpus all -p 8000:8000 \
+  -v turboocr-models:/models:ro \
+  -e OCR_MODEL=small \
+  turboocr:triton-sm90
+```
+
+The adapter owns 8000 (Triton's default HTTP port) and speaks the KServe v2
+protocol including the binary tensor data extension, so `tritonclient.http`
+works unchanged:
+
+```python
+import numpy as np, tritonclient.http as httpclient
+cl = httpclient.InferenceServerClient("localhost:8000")
+inp = httpclient.InferInput("IMAGE", [1], "BYTES")
+inp.set_data_from_numpy(np.array([open("page.png","rb").read()], dtype=object))
+print(cl.infer("ocr", [inp]).as_numpy("TEXT")[0].decode())
+```
+
+Model name and version default to `ocr` / `1`, and the tensor names are
+configurable, so a client migrating off a Triton deployment usually needs only
+a hostname change. **HTTP only — there is no gRPC**; a `tritonclient.grpc`
+client has to switch to `tritonclient.http`.
+
 ### Pinning a GPU
 
 ```bash
@@ -433,6 +465,8 @@ matters far more to throughput than the model tier does.
 | Fatal `cuda_ptr.h - out of memory` at startup | pool too large for the card | set `PIPELINE_POOL_SIZE` — see [VRAM and pipeline pool size](#vram-and-pipeline-pool-size); auto-sizing under-estimates by ~4× on `medium` |
 | `/health/ready` returns 503 forever | engines still building, or a fatal init error | check logs; a CUDA OOM here usually means another process holds the GPU |
 | PaddleX client gets `null` images | `visualize` is unsupported by design | see [PADDLEX_COMPAT.md](../compat/paddlex/PADDLEX_COMPAT.md) |
+| Triton client cannot connect on 8001 | the compat adapter is HTTP-only | switch to `tritonclient.http` on 8000; see [TRITON_COMPAT.md](../compat/triton/TRITON_COMPAT.md) |
+| Triton client gets `unexpected output '<name>'` | tensor names differ from your old model | rename with `TRITON_OUTPUT_NAME` / `TRITON_INPUT_NAME`, or change the client |
 | Throughput well below the tables above | thermal throttling | check SM clock and throttle reasons |
 
 ---
@@ -455,8 +489,12 @@ matters far more to throughput than the model tier does.
 | `DET_MAX_SIDE_LIMIT` | `1280` | detection resolution; **in the cache key** |
 | `DISABLE_LAYOUT` | `0` | skip loading the layout model |
 | `TABLE_BACKEND` / `FORMULA_BACKEND` | — | opt-in table → HTML, formula → LaTeX |
-| `PADDLEX_API` | image default | `1` serves the compat API |
+| `PADDLEX_API` | image default | `1` serves the PaddleX compat API |
 | `PADDLEX_WORKERS` | `4` | uvicorn workers |
+| `TRITON_API` | image default | `1` serves the Triton/KServe v2 compat API (exclusive with `PADDLEX_API`) |
+| `TRITON_MODEL_NAME` / `TRITON_MODEL_VERSION` | `ocr` / `1` | model identity in the `/v2` URL path |
+| `TRITON_WORKERS` | `4` | uvicorn workers |
+| `TRITON_STRICT_PARAMS` | `0` | 400 on unsupported parameters instead of ignoring |
 | `PADDLEX_STRICT_PARAMS` | `0` | 422 on unsupported params instead of ignoring |
 | `LOG_FORMAT` / `LOG_LEVEL` | `json` / `info` | |
 

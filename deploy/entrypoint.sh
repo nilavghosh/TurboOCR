@@ -148,9 +148,35 @@ if [[ "${WARM_ONLY:-0}" == "1" ]]; then
 fi
 
 # ---- serve ---------------------------------------------------------------
+# Compat adapters (PaddleX, Triton/KServe v2) run in front of the C++ server:
+# the adapter owns the public port and turboocr-server binds TURBO_PORT
+# privately. Exactly one may be enabled — they would otherwise fight over the
+# same listener, and the second one to bind would fail long after the first
+# looked healthy.
+ADAPTER_MODULE=""
+if [[ "${PADDLEX_API:-0}" == "1" && "${TRITON_API:-0}" == "1" ]]; then
+    die "PADDLEX_API=1 and TRITON_API=1 are mutually exclusive -- run two containers, one per protocol"
+fi
 if [[ "${PADDLEX_API:-0}" == "1" ]]; then
+    ADAPTER_NAME="PaddleX"
+    ADAPTER_MODULE="paddlex_adapter:app"
+    ADAPTER_DIR=/app/compat/paddlex
+    ADAPTER_PORT="${PADDLEX_PORT:-8080}"
+    ADAPTER_WORKERS="${PADDLEX_WORKERS:-4}"
+    ADAPTER_LOG="${PADDLEX_LOG_LEVEL:-info}"
+elif [[ "${TRITON_API:-0}" == "1" ]]; then
+    ADAPTER_NAME="Triton/KServe v2"
+    ADAPTER_MODULE="triton_adapter:app"
+    ADAPTER_DIR=/app/compat/triton
+    # 8000 is Triton's own default HTTP port, so a client moves with a
+    # hostname change and nothing else.
+    ADAPTER_PORT="${TRITON_PORT:-8000}"
+    ADAPTER_WORKERS="${TRITON_WORKERS:-4}"
+    ADAPTER_LOG="${TRITON_LOG_LEVEL:-info}"
+fi
+
+if [[ -n "$ADAPTER_MODULE" ]]; then
     TURBO_PORT="${TURBO_PORT:-8081}"
-    PADDLEX_PORT="${PADDLEX_PORT:-8080}"
     export TURBO_OCR_URL="http://127.0.0.1:${TURBO_PORT}"
 
     # Kill the whole process group on exit: a crash in either process should
@@ -166,12 +192,12 @@ if [[ "${PADDLEX_API:-0}" == "1" ]]; then
         kill -0 "$SRV" 2>/dev/null || die "turboocr-server exited during startup"
         sleep 2
     done
-    log "backend ready; PaddleX-compatible API on :${PADDLEX_PORT}"
-    exec uvicorn paddlex_adapter:app \
-        --app-dir /app/compat/paddlex \
-        --host 0.0.0.0 --port "${PADDLEX_PORT}" \
-        --workers "${PADDLEX_WORKERS:-4}" \
-        --log-level "${PADDLEX_LOG_LEVEL:-info}"
+    log "backend ready; ${ADAPTER_NAME}-compatible API on :${ADAPTER_PORT}"
+    exec uvicorn "${ADAPTER_MODULE}" \
+        --app-dir "${ADAPTER_DIR}" \
+        --host 0.0.0.0 --port "${ADAPTER_PORT}" \
+        --workers "${ADAPTER_WORKERS}" \
+        --log-level "${ADAPTER_LOG}"
 fi
 
 exec ./build/turboocr-server --http-port "${TURBO_PORT:-8080}" "$@"
