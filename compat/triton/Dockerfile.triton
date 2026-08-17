@@ -1,32 +1,41 @@
 # ============================================================
 # TurboOCR with the Triton / KServe v2 API baked in
 # ============================================================
-# Same CUDA 12 stack as benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12
-# (so a pre-built TensorRT engine cache still matches), plus a FastAPI adapter
-# that speaks the KServe v2 inference protocol — including the binary tensor
-# data extension — on the front door.
+# Same CUDA 12.8 stack as compat/paddlex/Dockerfile.cuda128 — one recipe for
+# both current deployment GPUs, since 12.8 supports Hopper (sm_90) AND
+# Blackwell (sm_120) — plus a FastAPI adapter that speaks the KServe v2
+# inference protocol, including the binary tensor data extension.
 #
 # The adapter listens on 8000, Triton's own default HTTP port, and
 # turboocr-server binds 8081 privately, so a Triton client can be repointed
 # with only a hostname change.
 #
-# CUDA_ARCH defaults to 90 (Hopper/H100); pass --build-arg CUDA_ARCH=89 for an
-# L40S / L4.
+# CUDA_ARCH defaults to 120 (Blackwell: RTX PRO 6000, RTX 50xx). The only
+# thing that changes between the two targets is this one arg:
+#
+#   RTX PRO 6000  :  --build-arg CUDA_ARCH=120   (default)
+#   H100 / Hopper :  --build-arg CUDA_ARCH=90
 #
 # Build:
 #   docker build -f compat/triton/Dockerfile.triton \
-#     --build-arg CUDA_ARCH=90 --build-arg CUDA_RUNTIME=12.4 \
-#     -t turboocr:triton-sm90 .
+#     --build-arg CUDA_ARCH=120 -t turboocr:triton-sm120 .
 # Run — engines resolved out of /models by GPU + toolchain (deploy/README.md):
 #   docker run --gpus all -p 8000:8000 \
-#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:triton-sm90
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:triton-sm120
 #   curl http://localhost:8000/v2/models/ocr
+#
+# ENGINE CACHE NOTE. Engines are per (arch, driver-CUDA, runtime-CUDA, TRT), so
+# each GPU warms its own variant dir: sm120-rt12.8-drv<X>-trt10.16 and
+# sm90-rt12.8-drv<Y>-trt10.16. An H100 moving here off a CUDA-12.4 image
+# changes the runtime component (rt12.4 -> rt12.8) and needs a one-time
+# re-warm.
 #
 # Differences from a real Triton deployment: compat/triton/TRITON_COMPAT.md
 # ============================================================
 
-ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
-ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+# CUDA 12.8 — first toolkit with sm_120 (Blackwell); also fully supports sm_90.
+ARG CUDA_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
 
 # ------------------------------------------------------------
 # Stage 1 — builder (identical to Dockerfile.cuda12)
@@ -34,6 +43,10 @@ ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 FROM ${CUDA_IMAGE} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# 120 = Blackwell (RTX PRO 6000, RTX 50xx); 90 = Hopper (H100/H200). Declared
+# up here so the TensorRT builder-resource guard below can validate it.
+ARG CUDA_ARCH=120
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
@@ -60,6 +73,8 @@ RUN cd /tmp && git clone --depth 1 --branch v1.9.12 https://github.com/drogonfra
     && cmake --build build -j"$(nproc)" && cmake --install build \
     && rm -rf /tmp/drogon
 
+# TensorRT. Must ship the builder resource for the requested CUDA_ARCH
+# (Blackwell sm_120 landed in TRT 10.8; Hopper sm_90 much earlier).
 ARG TRT_VERSION=10.16.0.72
 ARG TRT_CUDA=12.9
 RUN cd /usr/local && \
@@ -68,6 +83,16 @@ RUN cd /usr/local && \
           "TensorRT-${TRT_VERSION}/include/*" \
           "TensorRT-${TRT_VERSION}/lib/*.so*" \
     && ln -sfn "/usr/local/TensorRT-${TRT_VERSION}" /usr/local/tensorrt
+
+# Fail the BUILD now if this TRT has no builder resource for CUDA_ARCH, instead
+# of at first engine build on the GPU with:
+#   Unable to load library: libnvinfer_builder_resource_sm<arch>.so...: No such file
+RUN test -n "$(ls /usr/local/tensorrt/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so* 2>/dev/null)" \
+    || { echo "FATAL: TensorRT ${TRT_VERSION} ships no libnvinfer_builder_resource_sm${CUDA_ARCH}.so (for CUDA_ARCH=${CUDA_ARCH})." >&2; \
+         echo "       Use a TensorRT that supports this arch (Blackwell sm_120 needs >=10.8), via --build-arg TRT_VERSION / TRT_CUDA." >&2; \
+         echo "       builder resources present in this TRT:" >&2; \
+         ls /usr/local/tensorrt/lib/libnvinfer_builder_resource_sm*.so* >&2 || true; \
+         exit 1; }
 
 ARG ORT_VERSION=1.22.0
 RUN cd /tmp && \
@@ -103,9 +128,6 @@ RUN cd /tmp && \
 RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
     && cp bin/libpdfium.so /usr/lib/ && ldconfig
 
-# 90 = Hopper (H100, H200), the deployment target; 89 = Ada (L40S, L4).
-# Must match the runtime stage below — see the builder-resource note there.
-ARG CUDA_ARCH=90
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
         -DTENSORRT_DIR=/usr/local/tensorrt \
         -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
@@ -140,7 +162,7 @@ ARG TRT_VERSION=10.16.0.72
 # TensorRT dlopen()s it by bare name on a cache miss, so an image whose
 # CUDA_ARCH differs from the deployment GPU cannot build engines at all —
 # it fails with an opaque "Failed to build engine".
-ARG CUDA_ARCH=90
+ARG CUDA_ARCH=120
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
 COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/
@@ -178,7 +200,7 @@ RUN ldconfig \
 # cache key, so the entrypoint has to know them to resolve the right cache
 # directory. Overriding them at `docker run` would rename the cache directory
 # without changing what the binary links.
-ARG CUDA_RUNTIME=12.4
+ARG CUDA_RUNTIME=12.8
 ENV TURBO_CUDA_RUNTIME=${CUDA_RUNTIME}
 ENV TURBO_TRT_VERSION=${TRT_VERSION}
 ENV TURBO_CUDA_ARCH=${CUDA_ARCH}

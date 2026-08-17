@@ -259,6 +259,15 @@ docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
 | `TRT_CUDA` | `12.9` | CUDA flavour of the TensorRT tarball |
 | `ORT_VERSION` | `1.22.0` | CUDA-12 GPU build |
 
+The table above is for the **CUDA 12.4** images (`Dockerfile.cuda12`,
+`Dockerfile.paddlex`). The **CUDA 12.8** images
+(`compat/paddlex/Dockerfile.cuda128`, `compat/triton/Dockerfile.triton`)
+default to `CUDA_ARCH=120` and `CUDA_RUNTIME=12.8` instead, because 12.8 is the
+first toolkit with `sm_120` — a 12.4 build cannot target Blackwell at all
+(`nvcc` rejects `compute_120`), which is why the 12.4 images stay on `90`.
+Those two also fail the build immediately if the pinned TensorRT ships no
+builder resource for the requested arch.
+
 `CUDA_ARCH` also selects which TensorRT builder-resource library is copied into
 the runtime stage, keeping the image lean. It is therefore not merely a codegen
 hint: an image built for one architecture cannot build engines on another, and a
@@ -363,7 +372,7 @@ knobs this backend cannot honour.
 docker run --gpus all -p 8000:8000 \
   -v turboocr-models:/models:ro \
   -e OCR_MODEL=small \
-  turboocr:triton-sm90
+  turboocr:triton-sm120
 ```
 
 The adapter owns 8000 (Triton's default HTTP port) and speaks the KServe v2

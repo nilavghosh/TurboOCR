@@ -283,13 +283,16 @@ fails fast rather than letting the second adapter lose a race for the port.
 ## Running
 
 ```bash
+# CUDA 12.8 base: sm_120 (default) and sm_90 from one recipe.
 docker build -f compat/triton/Dockerfile.triton \
-  --build-arg CUDA_ARCH=90 -t turboocr:triton-sm90 .
+  --build-arg CUDA_ARCH=120 -t turboocr:triton-sm120 .   # RTX PRO 6000
+docker build -f compat/triton/Dockerfile.triton \
+  --build-arg CUDA_ARCH=90  -t turboocr:triton-sm90 .    # H100
 
 # Engines are resolved out of /models by GPU + toolchain automatically.
 docker run --gpus all -p 8000:8000 \
   -v turboocr-models:/models -e OCR_MODEL=medium \
-  turboocr:triton-sm90
+  turboocr:triton-sm120
 ```
 
 See [`deploy/README.md`](../../deploy/README.md) for the volume layout, engine
