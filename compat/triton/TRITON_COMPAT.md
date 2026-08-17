@@ -38,12 +38,18 @@ TurboOCR does have its own gRPC service on 50051, but it speaks
 `proto/ocr.proto`, not Triton's protocol. It is a different API, not a
 drop-in.
 
-**The tensor names are not your old model's.** This adapter defines its own
-signature (`IMAGE` → `OCR_RESULT`, `TEXT`). If your client hard-codes the
-names your previous Triton model used, either change the client or rename the
-tensors here with `TRITON_INPUT_NAME` / `TRITON_OUTPUT_NAME` /
-`TRITON_TEXT_OUTPUT_NAME`. The model name and version are configurable for the
-same reason and default to `ocr` / `1`.
+**Default mode is a paddle-ocr-triton drop-in.** By default
+(`TRITON_PADDLE_ENVELOPE=1`) the adapter mirrors the PaddleX-HPS `ocr` model:
+input tensor `input` carrying a PaddleX envelope, output tensor `output`
+carrying the PaddleX-HPS JSON envelope (plus a convenience `TEXT`). An
+unmodified paddle client — including `inocr-client` — works by only repointing
+its endpoint host; no client change. See **PaddleX-envelope mode** below.
+
+Set `TRITON_PADDLE_ENVELOPE=0` for the **native** signature instead
+(`IMAGE` → `OCR_RESULT`, `TEXT`), documented in the Tensors section. In either
+mode the tensor names are overridable with `TRITON_INPUT_NAME` /
+`TRITON_OUTPUT_NAME` / `TRITON_TEXT_OUTPUT_NAME`, and the model name/version
+default to `ocr` / `1`.
 
 ---
 
@@ -71,7 +77,63 @@ that probes for shared memory is told no here rather than failing later.
 
 ---
 
-## Tensors
+## PaddleX-envelope mode (default)
+
+With `TRITON_PADDLE_ENVELOPE=1` (the default) the signature is a drop-in for the
+paddle-ocr-triton `ocr` model:
+
+```
+input   input   BYTES  [-1]   one PaddleX envelope per element
+output  output  BYTES  [-1]   one PaddleX-HPS JSON envelope per element
+output  TEXT    BYTES  [-1]   recognized text per element (convenience)
+```
+
+**Input element** is the JSON object a paddle client already sends:
+
+```json
+{"file": "<base64 image or PDF>", "fileType": 1, "visualize": false}
+```
+
+`fileType` (0=PDF, 1=image) and `visualize` are accepted and otherwise ignored —
+image-vs-PDF is sniffed from the decoded bytes, and this backend never renders.
+A raw encoded image (no envelope) is still accepted under the same tensor, so
+native binary clients keep working.
+
+**`output` element** is the PaddleX-HPS response envelope, byte-compatible with
+`compat/paddlex` (same `prunedResult` field set and key order):
+
+```json
+{"logId":"","errorCode":0,"errorMsg":"Success",
+ "result":{"ocrResults":[{"prunedResult":{
+     "dt_polys":[...],"rec_texts":[...],"rec_scores":[...],
+     "rec_polys":[...],"rec_boxes":[...], ...}}],
+   "dataInfo":{"width":W,"height":H,"type":"image"}}}
+```
+
+A PDF yields one `ocrResults` entry per page and `dataInfo.type == "pdf"` with
+`numPages`. A per-slot backend failure maps to `errorCode != 0` so the client
+raises rather than reading empty text. This is exactly what `inocr-client`'s
+`paddleocr` mode parses (`result.ocrResults[].prunedResult.{rec_texts,
+rec_scores, dt_polys}`), so it works unchanged:
+
+```python
+from inocr_client import InOCRClient
+c = InOCRClient(model_type="paddleocr",
+                endpoint="prod-inocr-v3.truefoundry-aws.innovaccer.com")
+print(c.infer("page.jpg")["croppedImageText"])   # no other change
+```
+
+Or over plain HTTP (JSON form — elements are the envelope string, not base64):
+
+```bash
+curl -X POST http://localhost:8000/v2/models/ocr/infer \
+  -H 'Content-Type: application/json' -d '{
+    "inputs": [{"name":"input","datatype":"BYTES","shape":[1,1],
+      "data":["{\"file\":\"'"$(base64 -w0 page.png)"'\",\"fileType\":1}"]}],
+    "outputs": [{"name":"output"}]}'
+```
+
+## Native mode (`TRITON_PADDLE_ENVELOPE=0`)
 
 ```
 input   IMAGE       BYTES  [-1]   one encoded image or PDF per element
@@ -266,9 +328,12 @@ print(r.as_numpy("TEXT")[0].decode())
 | `TRITON_MODEL_NAME` | `ocr` | model name in the URL path |
 | `TRITON_MODEL_VERSION` | `1` | the single served version |
 | `TRITON_SERVER_VERSION` | `2.44.0` | reported by `GET /v2` |
-| `TRITON_INPUT_NAME` | `IMAGE` | input tensor name |
-| `TRITON_OUTPUT_NAME` | `OCR_RESULT` | JSON output tensor name |
+| `TRITON_PADDLE_ENVELOPE` | `1` | `1` = paddle-ocr-triton drop-in (`input`→`output`, PaddleX envelopes); `0` = native (`IMAGE`→`OCR_RESULT`) |
+| `TRITON_INPUT_NAME` | `input` / `IMAGE` | input tensor name (default depends on the mode above) |
+| `TRITON_OUTPUT_NAME` | `output` / `OCR_RESULT` | JSON output tensor name (default depends on the mode above) |
 | `TRITON_TEXT_OUTPUT_NAME` | `TEXT` | text output tensor name |
+| `PADDLE_REC_SCORE_THRESH` | `0.0` | (paddle mode) drop rec_* below this confidence |
+| `PADDLE_USE_TEXTLINE_ORIENTATION` | `1` | (paddle mode) value echoed in `prunedResult.model_settings` |
 | `TRITON_MAX_BATCH_SIZE` | `64` | elements per input tensor |
 | `TRITON_STRICT_PARAMS` | `0` | `1` rejects unknown parameters with 400 |
 | `TRITON_TIMEOUT_S` | `120` | backend request timeout |

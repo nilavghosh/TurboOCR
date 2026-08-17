@@ -10,11 +10,26 @@ Protocol references:
   Triton binary tensor data    docs/protocol/extension_binary_data.md
   Triton model metadata        docs/protocol/README.md
 
-Tensor contract (names are configurable, see the env table in TRITON_COMPAT.md):
+Tensor contract (names are configurable, see the env table in TRITON_COMPAT.md).
 
-    input   IMAGE       BYTES [-1]   one encoded image (or PDF) per element
-    output  OCR_RESULT  BYTES [-1]   one JSON document per input element
-    output  TEXT        BYTES [-1]   recognized text per input element
+The DEFAULT is PaddleX-HPS compatibility mode (TRITON_PADDLE_ENVELOPE=1), a
+drop-in for the paddle-ocr-triton `ocr` model so an unmodified client such as
+inocr-client works by only changing the endpoint host:
+
+    input   input   BYTES [-1]   one PaddleX envelope per element:
+                                 {"file": <base64 image|pdf>, "fileType": 0|1,
+                                  "visualize": bool}  (a raw encoded image is
+                                 also accepted)
+    output  output  BYTES [-1]   PaddleX-HPS JSON envelope per element:
+                                 {errorCode, errorMsg, result:{ocrResults:
+                                  [{prunedResult:{rec_texts, rec_scores,
+                                    rec_polys, dt_polys, ...}}], dataInfo}}
+    output  TEXT    BYTES [-1]   recognized text per element (convenience)
+
+Set TRITON_PADDLE_ENVELOPE=0 for the native contract instead (input `IMAGE` =
+one encoded image per element; output `OCR_RESULT` = TurboOCR's native doc JSON
+plus `TEXT`). Tensor names default to `input`/`output` here and are overridable
+via TRITON_INPUT_NAME / TRITON_OUTPUT_NAME regardless of mode.
 
 Per-request options travel in the KServe `parameters` object rather than as
 extra tensors, so the model signature stays fixed: `layout`, `reading_order`,
@@ -56,9 +71,35 @@ MODEL_NAME = os.environ.get("TRITON_MODEL_NAME", "ocr")
 MODEL_VERSION = os.environ.get("TRITON_MODEL_VERSION", "1")
 SERVER_VERSION = os.environ.get("TRITON_SERVER_VERSION", "2.44.0")
 
-INPUT_NAME = os.environ.get("TRITON_INPUT_NAME", "IMAGE")
-OUTPUT_NAME = os.environ.get("TRITON_OUTPUT_NAME", "OCR_RESULT")
+# PaddleX-HPS compatibility is the default: tensor names and payload shapes
+# mirror the paddle-ocr-triton `ocr` model so inocr-client works unchanged.
+# Set TRITON_PADDLE_ENVELOPE=0 for the native IMAGE/OCR_RESULT contract.
+PADDLE_ENVELOPE = os.environ.get("TRITON_PADDLE_ENVELOPE", "1").lower() not in (
+    "0", "false", "no", "off",
+)
+_DEFAULT_INPUT = "input" if PADDLE_ENVELOPE else "IMAGE"
+_DEFAULT_OUTPUT = "output" if PADDLE_ENVELOPE else "OCR_RESULT"
+
+INPUT_NAME = os.environ.get("TRITON_INPUT_NAME", _DEFAULT_INPUT)
+OUTPUT_NAME = os.environ.get("TRITON_OUTPUT_NAME", _DEFAULT_OUTPUT)
 TEXT_OUTPUT_NAME = os.environ.get("TRITON_TEXT_OUTPUT_NAME", "TEXT")
+
+# PaddleX prunedResult shaping (mirrors compat/paddlex/paddlex_adapter.py so the
+# two compat layers stay byte-compatible). Only consulted when PADDLE_ENVELOPE.
+REC_SCORE_THRESH = float(os.environ.get("PADDLE_REC_SCORE_THRESH", "0.0"))
+USE_TEXTLINE_ORIENTATION = os.environ.get(
+    "PADDLE_USE_TEXTLINE_ORIENTATION", "1"
+).lower() in ("1", "true", "yes", "on")
+EMIT_ORIENTATION_ANGLES = os.environ.get(
+    "PADDLEX_EMIT_ORIENTATION_ANGLES", "0"
+).lower() in ("1", "true", "yes", "on")
+DET_DEFAULTS = {
+    "limit_side_len": int(os.environ.get("DET_LIMIT_SIDE_LEN", "64")),
+    "limit_type": os.environ.get("DET_LIMIT_TYPE", "min"),
+    "thresh": float(os.environ.get("DET_DB_THRESH", "0.2")),
+    "box_thresh": float(os.environ.get("DET_BOX_THRESH", "0.45")),
+    "unclip_ratio": float(os.environ.get("DET_UNCLIP", "1.4")),
+}
 
 MAX_BATCH_SIZE = int(os.environ.get("TRITON_MAX_BATCH_SIZE", "64"))
 PDF_DPI = int(os.environ.get("TRITON_PDF_DPI", "100"))
@@ -154,16 +195,55 @@ def _decode_json_bytes(data: List[Any], name: str) -> List[bytes]:
     Triton's JSON form of BYTES is an array of strings, which cannot carry a
     PNG. Elements are therefore required to be base64 — the same encoding the
     PaddleX-compatible API takes — so `curl` with a JSON body stays usable.
+
+    In PaddleX-envelope mode an element may instead be a JSON object string
+    ({"file": <base64>, ...}); such elements are unwrapped by the caller.
     """
     out: List[bytes] = []
     for i, el in enumerate(data):
         if not isinstance(el, str):
             raise InferError(400, f"input '{name}' element {i}: expected a base64 string")
+        if PADDLE_ENVELOPE and el.lstrip()[:1] == "{":
+            # A JSON object element is a PaddleX input envelope, not base64.
+            out.append(_unwrap_envelope(el.encode("utf-8")))
+            continue
         try:
             out.append(base64.b64decode(el, validate=False))
         except (binascii.Error, ValueError) as e:
             raise InferError(400, f"input '{name}' element {i}: invalid base64 ({e})") from e
     return out
+
+
+def _unwrap_envelope(raw: bytes) -> bytes:
+    """PaddleX input-envelope compatibility (PADDLE_ENVELOPE mode).
+
+    paddle-ocr-triton clients (e.g. inocr-client) put each element on the wire
+    as a JSON object {"file": <base64 image|pdf>, "fileType": 0|1,
+    "visualize": bool} rather than the encoded image itself. Unwrap that to the
+    decoded file bytes. `fileType` and `visualize` are not needed downstream:
+    PDF vs image is sniffed from the decoded bytes, and this backend never
+    renders. A non-envelope element (a raw encoded image) is returned
+    unchanged, so the native contract keeps working under the same name.
+    """
+    if raw.lstrip()[:1] != b"{":
+        return raw
+    try:
+        obj = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return raw
+    if not isinstance(obj, dict) or not isinstance(obj.get("file"), str):
+        return raw
+    f = obj["file"]
+    if f.startswith(("http://", "https://")):
+        raise InferError(
+            400, f"input '{INPUT_NAME}': URL 'file' is unsupported; send base64-encoded bytes"
+        )
+    try:
+        return base64.b64decode(f, validate=False)
+    except (binascii.Error, ValueError) as e:
+        raise InferError(
+            400, f"input '{INPUT_NAME}': invalid base64 in envelope 'file' ({e})"
+        ) from e
 
 
 def _element_count(shape: Any, name: str) -> int:
@@ -242,6 +322,10 @@ def _extract_images(payload: Dict[str, Any], blob: bytes) -> List[bytes]:
             )
         if size is not None:
             images = _decode_bytes_tensor(chunk, INPUT_NAME)
+            if PADDLE_ENVELOPE:
+                # Binary-extension element may be a PaddleX envelope (the shape
+                # inocr-client sends via set_data_from_numpy) or a raw image.
+                images = [_unwrap_envelope(el) for el in images]
         else:
             data = spec.get("data")
             if not isinstance(data, list):
@@ -450,6 +534,94 @@ def _requested_outputs(payload: Dict[str, Any]) -> List[Tuple[str, Optional[Dict
     return resolved
 
 
+def _poly_to_box(poly: List[List[float]]) -> List[int]:
+    """Axis-aligned [x1,y1,x2,y2] enclosing a 4-point polygon (PaddleX rec_boxes)."""
+    xs = [int(round(p[0])) for p in poly]
+    ys = [int(round(p[1])) for p in poly]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def _pruned_result(turbo_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Map TurboOCR `results[]` onto PaddleX's prunedResult.
+
+    Field set and key order mirror compat/paddlex/paddlex_adapter.py so a
+    paddle-ocr-triton client parses either backend identically. dt_polys is
+    everything detected; rec_* is what survived REC_SCORE_THRESH.
+    """
+    dt_polys: List[List[List[int]]] = []
+    rec_texts: List[str] = []
+    rec_scores: List[float] = []
+    rec_polys: List[List[List[int]]] = []
+    rec_boxes: List[List[int]] = []
+    for item in turbo_results or []:
+        poly = [[int(round(c[0])), int(round(c[1]))] for c in item.get("bounding_box", [])]
+        if not poly:
+            continue
+        dt_polys.append(poly)
+        score = float(item.get("confidence", 0.0))
+        if score < REC_SCORE_THRESH:
+            continue
+        rec_texts.append(item.get("text", ""))
+        rec_scores.append(score)
+        rec_polys.append(poly)
+        rec_boxes.append(_poly_to_box(poly))
+    pruned: Dict[str, Any] = {
+        "model_settings": {
+            "use_doc_preprocessor": False,
+            "use_textline_orientation": USE_TEXTLINE_ORIENTATION,
+        },
+        "dt_polys": dt_polys,
+        "text_det_params": dict(DET_DEFAULTS),
+        "text_type": "general",
+    }
+    if EMIT_ORIENTATION_ANGLES:
+        pruned["textline_orientation_angles"] = [0] * len(dt_polys)
+    pruned["text_rec_score_thresh"] = REC_SCORE_THRESH
+    pruned["return_word_box"] = False
+    pruned["rec_texts"] = rec_texts
+    pruned["rec_scores"] = rec_scores
+    pruned["rec_polys"] = rec_polys
+    pruned["rec_boxes"] = rec_boxes
+    return pruned
+
+
+def _ocr_entry(pruned: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "prunedResult": pruned,
+        "ocrImage": None,
+        "docPreprocessingImage": None,
+        "inputImage": None,
+    }
+
+
+def _to_paddle_envelope(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """One TurboOCR result doc -> the PaddleX-HPS response envelope that
+    paddle-ocr-triton clients (inocr-client) parse.
+
+    A per-slot backend failure (`error` in a batch entry) maps to a non-zero
+    errorCode so the client raises, rather than silently returning empty text.
+    """
+    err = doc.get("error")
+    if err:
+        return {"logId": "", "errorCode": 1, "errorMsg": str(err),
+                "result": {"ocrResults": [], "dataInfo": {}}}
+    if "pages" in doc:
+        pages = doc.get("pages") or []
+        ocr_results = [_ocr_entry(_pruned_result(p.get("results", []))) for p in pages]
+        data_info: Dict[str, Any] = {
+            "numPages": len(pages),
+            "pages": [{"width": int(p.get("width", 0)), "height": int(p.get("height", 0))}
+                      for p in pages],
+            "type": "pdf",
+        }
+    else:
+        ocr_results = [_ocr_entry(_pruned_result(doc.get("results", [])))]
+        data_info = {"width": int(doc.get("width", 0)), "height": int(doc.get("height", 0)),
+                     "type": "image"}
+    return {"logId": "", "errorCode": 0, "errorMsg": "Success",
+            "result": {"ocrResults": ocr_results, "dataInfo": data_info}}
+
+
 def _build_response(
     payload: Dict[str, Any],
     docs: List[Dict[str, Any]],
@@ -466,7 +638,10 @@ def _build_response(
     blobs: List[bytes] = []
     for name, spec in _requested_outputs(payload):
         if name == OUTPUT_NAME:
-            elements = [json.dumps(d, separators=(",", ":")) for d in docs]
+            if PADDLE_ENVELOPE:
+                elements = [json.dumps(_to_paddle_envelope(d), separators=(",", ":")) for d in docs]
+            else:
+                elements = [json.dumps(d, separators=(",", ":")) for d in docs]
         else:
             elements = [_flatten_text(d) for d in docs]
 

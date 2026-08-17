@@ -73,8 +73,12 @@ jobs:
           python-version: '3.11'
       - name: Install adapter deps
         run: pip install -r compat/triton/requirements.txt
-      - name: Triton/KServe v2 protocol suite
+      # Two modes, two processes: each suite pins TRITON_PADDLE_ENVELOPE before
+      # importing the adapter, which reads it at import time.
+      - name: Triton/KServe v2 protocol suite (native contract)
         run: python3 compat/triton/test_adapter_offline.py
+      - name: Triton/KServe v2 protocol suite (PaddleX envelope, default)
+        run: python3 compat/triton/test_adapter_paddle_offline.py
 
   # Static analysis: cppcheck (dead code + quality). Report-only.
   static-analysis:

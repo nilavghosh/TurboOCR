@@ -12,11 +12,18 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import struct
 import sys
 
 import httpx
 from fastapi.testclient import TestClient
+
+# This file validates the NATIVE tensor contract (IMAGE / OCR_RESULT + TEXT).
+# The adapter now defaults to PaddleX-envelope mode, so pin native mode before
+# import (the module reads these at import time). PaddleX mode is covered by
+# test_adapter_paddle_offline.py.
+os.environ["TRITON_PADDLE_ENVELOPE"] = "0"
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import triton_adapter as ta  # noqa: E402
