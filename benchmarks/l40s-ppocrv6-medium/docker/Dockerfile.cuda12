@@ -1,0 +1,255 @@
+# ============================================================
+# TurboOCR — CUDA 12 / TensorRT 10.16 image
+# ============================================================
+# The upstream docker/Dockerfile.gpu builds on nvcr.io TensorRT 26.03 (CUDA 13),
+# which needs NVIDIA driver 580+. This variant targets hosts still on a 12.x
+# driver (e.g. 550.x) and, just as importantly, produces a runtime whose
+# TensorRT-engine cache key matches engines built by the equivalent native
+# build — so a pre-built engine cache can be mounted for instant startup.
+#
+# The cache key (src/engine/trt/trt_engine_cache.cpp) is:
+#   v<profileVersion>:<type>:<onnxPath>:<size>:<mtime>:<TRT M.m.p>
+#     :sm<cc>:drv<cudaDriverGetVersion>:rt<cudaRuntimeGetVersion>[:dms..:dob..]:opt<level>
+# so CUDA_RUNTIME, TENSORRT and the host driver all have to match the machine
+# the engines were built on. See ../DEPLOY.md for the full compatibility matrix.
+#
+# CUDA_ARCH defaults to 90 (Hopper/H100) because that is what this image is
+# deployed onto. The directory name is historical — the medium-tier benchmark
+# numbers under ../ were measured on an L40S (sm89). Building for the L40S
+# still works, it just needs --build-arg CUDA_ARCH=89.
+#
+# Build (the toolchain triple is build-time — see deploy/README.md):
+#   docker build -f benchmarks/l40s-ppocrv6-medium/docker/Dockerfile.cuda12 \
+#     --build-arg CUDA_ARCH=90 --build-arg CUDA_RUNTIME=12.4 \
+#     --build-arg TRT_VERSION=10.16.0.72 --build-arg TRT_CUDA=12.9 \
+#     -t turboocr:cuda12-sm90 .
+#
+# Run — engines are picked out of /models by GPU + toolchain automatically:
+#   docker run --gpus all -p 8080:8080 -p 50051:50051 \
+#     -v turboocr-models:/models -e OCR_MODEL=medium turboocr:cuda12-sm90
+#
+# Pre-bake a cache without serving:
+#   docker run --rm --gpus all -v turboocr-models:/models \
+#     -e WARM_ONLY=1 -e OCR_MODEL=medium -e TRT_OPT_LEVEL=3 turboocr:cuda12-sm90
+# ============================================================
+
+ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+# ------------------------------------------------------------
+# Stage 1 — builder
+# ------------------------------------------------------------
+FROM ${CUDA_IMAGE} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# GCC 13: the tree uses std::format, which Ubuntu 22.04's default GCC 11 lacks.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg \
+    && curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x60C317803A41BA51845E371A1E9377A2BA9EF27F" \
+        | gpg --dearmor -o /usr/share/keyrings/ubuntu-toolchain-r.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/ubuntu-toolchain-r.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/toolchain-r.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        gcc-13 g++-13 \
+        build-essential pkg-config git wget cmake \
+        libopencv-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+        libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev libc-ares-dev \
+        libcurl4-openssl-dev libturbojpeg0-dev libwebp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CC=gcc-13 CXX=g++-13 CUDAHOSTCXX=g++-13
+
+# Drogon (static lib; no runtime .so needed in the final image).
+RUN cd /tmp && git clone --depth 1 --branch v1.9.12 https://github.com/drogonframework/drogon.git \
+    && cd drogon && git submodule update --init \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_EXAMPLES=OFF -DBUILD_CTL=OFF -DBUILD_ORM=OFF \
+        -DBUILD_POSTGRESQL=OFF -DBUILD_MYSQL=OFF -DBUILD_SQLITE=OFF \
+        -DBUILD_REDIS=OFF -DBUILD_TESTING=OFF \
+    && cmake --build build -j"$(nproc)" && cmake --install build \
+    && rm -rf /tmp/drogon
+
+# TensorRT — the cuda-12.9 tarball of the same 10.16.0.72 the project pins.
+# NV_TENSORRT_{MAJOR,MINOR,PATCH} land in the engine cache key, so this version
+# must match whatever built the engines you intend to mount.
+ARG TRT_VERSION=10.16.0.72
+ARG TRT_CUDA=12.9
+RUN cd /usr/local && \
+    curl -fsSL "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/${TRT_VERSION%.*}/tars/TensorRT-${TRT_VERSION}.Linux.x86_64-gnu.cuda-${TRT_CUDA}.tar.gz" \
+      | tar xzf - --wildcards \
+          "TensorRT-${TRT_VERSION}/include/*" \
+          "TensorRT-${TRT_VERSION}/lib/*.so*" \
+    && ln -sfn "/usr/local/TensorRT-${TRT_VERSION}" /usr/local/tensorrt
+
+# ONNX Runtime — CUDA-12 GPU build. Only the opt-in formula backend creates ORT
+# sessions, but CMake hard-requires the CUDA EP at configure time.
+ARG ORT_VERSION=1.22.0
+RUN cd /tmp && \
+    curl -fsSL -O "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && tar xzf "onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && mkdir -p /src/third_party/onnxruntime \
+    && cp -r "onnxruntime-linux-x64-gpu-${ORT_VERSION}/include" \
+             "onnxruntime-linux-x64-gpu-${ORT_VERSION}/lib" /src/third_party/onnxruntime/ \
+    && rm -rf /tmp/onnxruntime*
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY proto/ proto/
+COPY include/ include/
+COPY src/ src/
+COPY tools/ tools/
+COPY third_party/ third_party/
+COPY tests/ tests/
+COPY scripts/ scripts/
+COPY bin/ bin/
+
+# Upgrade cmake. Jammy's apt cmake is 3.22.1, but fastpdf2png declares
+# cmake_minimum_required(VERSION 3.25) and ships a CMakePresets.json with
+# "version": 6 (needs >= 3.25) — 3.22 rejects it with
+#   CMake Error: Could not read presets from ...: Unrecognized "version" field
+# docker/Dockerfile.gpu already does this; its nvcr base just happened to ship
+# a newer cmake, so this variant is the one that trips over it.
+# Placed here rather than beside the apt block so the expensive cached layers
+# above (drogon, TensorRT, ONNX Runtime) stay valid.
+ARG CMAKE_VERSION=3.31.6
+RUN cd /tmp && \
+    wget -q "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" && \
+    tar xzf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/bin/* /usr/local/bin/ && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/share/* /usr/local/share/ && \
+    rm -rf /tmp/cmake*
+
+# fastpdf2png must be rebuilt: the vendored binary needs glibc 2.38 and this
+# base is glibc 2.35. Removing it first forces the installer to rebuild.
+RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
+    && cp bin/libpdfium.so /usr/lib/ && ldconfig
+
+# CMAKE_CUDA_ARCHITECTURES must cover the deployment GPU. 90 = Hopper (H100,
+# H200); 89 = Ada (L40S, L4, RTX 40xx). Engines are per-architecture anyway, so
+# a mounted cache is only valid on the arch it was built for.
+ARG CUDA_ARCH=90
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DTENSORRT_DIR=/usr/local/tensorrt \
+        -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+        -DFETCH_MODELS=OFF \
+    && cmake --build build -j"$(nproc)" --target turboocr-server
+
+# Models are fetched here rather than COPYed so the ONNX mtimes come from the
+# release's Last-Modified headers. Those mtimes are part of the engine cache
+# key, and wget preserves them, which is what makes a cache built elsewhere
+# reusable here.
+RUN bash scripts/fetch_release_models.sh
+
+# ------------------------------------------------------------
+# Stage 2 — runtime
+# ------------------------------------------------------------
+FROM ${CUDA_RUNTIME_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Shared libraries the server links against. Drogon/trantor are static and
+# absent by design.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libopencv-core4.5d libopencv-imgproc4.5d libopencv-imgcodecs4.5d \
+        libgrpc++1 libprotobuf23 libjsoncpp25 libcurl4 libturbojpeg \
+        libssl3 libc-ares2 libuuid1 zlib1g curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# GCC 13's libstdc++. The tree needs std::format, so the builder installs gcc-13
+# from the toolchain PPA and the binary ends up referencing GLIBCXX_3.4.31 and
+# GLIBCXX_3.4.32. This runtime base is stock jammy, whose libstdc++6 is GCC 12
+# (GLIBCXX_3.4.30 at most), so the server dies immediately with
+#   version `GLIBCXX_3.4.32' not found (required by ./build/turboocr-server)
+# Copying the builder's own libstdc++/libgcc guarantees the exact runtime the
+# binary was linked against, with no PPA-version drift between the two stages.
+# ldconfig (below) re-points the libstdc++.so.6 SONAME symlink at the newer file.
+# docker/Dockerfile.gpu is unaffected: its nvcr base already ships a newer GCC.
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/
+
+ARG TRT_VERSION=10.16.0.72
+ARG CUDA_ARCH=90
+# Only the two directly-linked TRT libs plus the sm_${CUDA_ARCH} builder
+# resource are copied. That resource is dlopen()'d by bare name when an engine
+# has to be built from ONNX (a cache miss), so this ARG must match the builder
+# stage: an image whose CUDA_ARCH differs from the deployment GPU fails the
+# build with an opaque "Failed to build engine". Drop it to save ~250 MB if you
+# always mount a warm cache and can tolerate a hard failure on a miss.
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/
+
+COPY --from=builder /src/third_party/onnxruntime/lib/ /usr/local/lib/
+COPY --from=builder /usr/lib/libpdfium.so /usr/lib/
+
+WORKDIR /app
+COPY --from=builder /src/build/turboocr-server ./build/turboocr-server
+COPY --from=builder /src/bin/ ./bin/
+# Preserves the ONNX mtimes from the builder stage, keeping the cache key stable.
+COPY --from=builder /src/models/ ./models/
+
+ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
+# Fail the BUILD on an ABI mismatch rather than the pod. ldd -r resolves symbol
+# versions, so a stale libstdc++/libgcc surfaces here instead of as a crash loop
+# minutes into a deploy. libcuda.so.1 is injected by the container runtime and
+# is legitimately absent at build time, so only version-tag failures are matched.
+RUN ldconfig \
+    && if ldd -r ./build/turboocr-server 2>&1 | grep -qE "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]"; then \
+         echo "FATAL: runtime stage is missing libstdc++/libgcc symbols the binary needs:" >&2; \
+         ldd -r ./build/turboocr-server 2>&1 | grep -E "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]" >&2; \
+         exit 1; \
+       fi
+
+# ------------------------------------------------------------
+# Toolchain identity — stamped into the image
+# ------------------------------------------------------------
+# These are BUILD-time facts, not runtime knobs. CUDA_RUNTIME is the CUDA the
+# binary is compiled against and TRT_VERSION is the TensorRT linked into it;
+# both are folded into the TensorRT engine cache key, so the entrypoint has to
+# know them to resolve the right cache directory. Exposing them as ENV lets the
+# entrypoint report and use them; overriding them at `docker run` would rename
+# the cache directory without changing what the binary links, which is exactly
+# how an incompatible cache gets mounted and silently rebuilt.
+ARG CUDA_RUNTIME=12.4
+ENV TURBO_CUDA_RUNTIME=${CUDA_RUNTIME}
+ENV TURBO_TRT_VERSION=${TRT_VERSION}
+ENV TURBO_CUDA_ARCH=${CUDA_ARCH}
+LABEL org.turboocr.cuda-runtime="${CUDA_RUNTIME}" \
+      org.turboocr.tensorrt="${TRT_VERSION}" \
+      org.turboocr.cuda-arch="${CUDA_ARCH}"
+
+# ------------------------------------------------------------
+# Models volume
+# ------------------------------------------------------------
+# /models holds engines/<variant>/ subdirectories, one per
+# (GPU arch, CUDA driver, CUDA runtime, TensorRT) combination. The entrypoint
+# picks the right one; the model tier is selected by OCR_MODEL and needs no
+# separate directory, because tiny/small/medium engines hash differently and
+# coexist safely in the same variant folder.
+ENV MODELS_DIR=/models
+RUN mkdir -p /models/engines
+VOLUME ["/models"]
+
+# Runtime-selectable knobs.
+#   OCR_MODEL      tiny | small | medium (+ arabic, eslav, korean, thai, greek)
+#   GPU_DEVICE     which physical GPU to bind on a multi-GPU host
+#   GPU_ARCH       override the auto-detected sm_XX (rarely needed)
+#   TRT_OPT_LEVEL  3 builds far faster than the default 5, slightly slower engines
+#   WARM_ONLY=1    build engines into the volume and exit, serving nothing
+ENV OCR_MODEL=medium \
+    LOG_FORMAT=json \
+    TRT_OPT_LEVEL=5
+
+
+EXPOSE 8080 50051
+
+# start-period is generous because a cold cache rebuilds engines from ONNX,
+# which takes hours on non-Blackwell GPUs.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health/ready || exit 1
+
+COPY deploy/entrypoint.sh /app/deploy/entrypoint.sh
+RUN chmod +x /app/deploy/entrypoint.sh
+
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]

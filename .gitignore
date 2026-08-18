@@ -63,3 +63,6 @@ site/
 model.cache
 # Local scratch outputs (demo/markdown test results) — never tracked
 /tmp/
+
+# Jupyter/editor autosave artifacts
+.ipynb_checkpoints/

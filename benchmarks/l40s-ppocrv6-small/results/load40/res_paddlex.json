@@ -1,0 +1,1502 @@
+{
+ "ncpu": 112,
+ "interval_s": 2.0,
+ "samples": [
+  {
+   "t": 1786756634.1,
+   "sys_cpu_pct": 1.18,
+   "cpu_cores": {
+    "turboocr": 0.0,
+    "adapter": 0.01,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6661,
+    "adapter": 246,
+    "locust": 13
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 69,
+    "sm_mhz": 2520,
+    "power_w": 104.77,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756636.2,
+   "sys_cpu_pct": 5.19,
+   "cpu_cores": {
+    "turboocr": 3.18,
+    "adapter": 1.2,
+    "locust": 0.41
+   },
+   "rss_mb": {
+    "turboocr": 6699,
+    "adapter": 275,
+    "locust": 53
+   },
+   "gpu": {
+    "util": 95,
+    "mem_mib": 27152,
+    "temp_c": 83,
+    "sm_mhz": 2280,
+    "power_w": 326.53,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756638.2,
+   "sys_cpu_pct": 5.72,
+   "cpu_cores": {
+    "turboocr": 3.88,
+    "adapter": 1.33,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6729,
+    "adapter": 289,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 95,
+    "mem_mib": 27152,
+    "temp_c": 84,
+    "sm_mhz": 2220,
+    "power_w": 313.07,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756640.2,
+   "sys_cpu_pct": 5.69,
+   "cpu_cores": {
+    "turboocr": 3.9,
+    "adapter": 1.25,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6735,
+    "adapter": 295,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 93,
+    "mem_mib": 27152,
+    "temp_c": 85,
+    "sm_mhz": 2205,
+    "power_w": 328.93,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756642.3,
+   "sys_cpu_pct": 5.61,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.16,
+    "locust": 0.21
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 295,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 85,
+    "mem_mib": 27152,
+    "temp_c": 84,
+    "sm_mhz": 2175,
+    "power_w": 311.87,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756644.3,
+   "sys_cpu_pct": 5.67,
+   "cpu_cores": {
+    "turboocr": 3.92,
+    "adapter": 1.21,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6747,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 91,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2235,
+    "power_w": 334.6,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756646.3,
+   "sys_cpu_pct": 5.68,
+   "cpu_cores": {
+    "turboocr": 3.88,
+    "adapter": 1.22,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6741,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 94,
+    "mem_mib": 27152,
+    "temp_c": 85,
+    "sm_mhz": 2385,
+    "power_w": 298.39,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756648.4,
+   "sys_cpu_pct": 5.67,
+   "cpu_cores": {
+    "turboocr": 3.87,
+    "adapter": 1.16,
+    "locust": 0.22
+   },
+   "rss_mb": {
+    "turboocr": 6742,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 89,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2355,
+    "power_w": 332.12,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756650.4,
+   "sys_cpu_pct": 5.63,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.22,
+    "locust": 0.2
+   },
+   "rss_mb": {
+    "turboocr": 6735,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 86,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2400,
+    "power_w": 328.98,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756652.4,
+   "sys_cpu_pct": 5.36,
+   "cpu_cores": {
+    "turboocr": 3.77,
+    "adapter": 1.17,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6741,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 92,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2130,
+    "power_w": 313.28,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756654.5,
+   "sys_cpu_pct": 5.61,
+   "cpu_cores": {
+    "turboocr": 3.86,
+    "adapter": 1.21,
+    "locust": 0.2
+   },
+   "rss_mb": {
+    "turboocr": 6742,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 91,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2205,
+    "power_w": 323.49,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756656.5,
+   "sys_cpu_pct": 5.5,
+   "cpu_cores": {
+    "turboocr": 3.81,
+    "adapter": 1.15,
+    "locust": 0.19
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 87,
+    "mem_mib": 27152,
+    "temp_c": 85,
+    "sm_mhz": 2325,
+    "power_w": 312.63,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756658.5,
+   "sys_cpu_pct": 5.62,
+   "cpu_cores": {
+    "turboocr": 3.71,
+    "adapter": 1.25,
+    "locust": 0.2
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 89,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2355,
+    "power_w": 303.37,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756660.6,
+   "sys_cpu_pct": 5.56,
+   "cpu_cores": {
+    "turboocr": 3.75,
+    "adapter": 1.24,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6738,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 90,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2220,
+    "power_w": 306.7,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756662.6,
+   "sys_cpu_pct": 5.61,
+   "cpu_cores": {
+    "turboocr": 3.79,
+    "adapter": 1.21,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6748,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 92,
+    "mem_mib": 27152,
+    "temp_c": 88,
+    "sm_mhz": 2220,
+    "power_w": 321.83,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756664.6,
+   "sys_cpu_pct": 5.57,
+   "cpu_cores": {
+    "turboocr": 3.72,
+    "adapter": 1.19,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6751,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 93,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2160,
+    "power_w": 312.54,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756666.6,
+   "sys_cpu_pct": 5.51,
+   "cpu_cores": {
+    "turboocr": 3.72,
+    "adapter": 1.19,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6747,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 98,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2040,
+    "power_w": 310.09,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756668.7,
+   "sys_cpu_pct": 5.54,
+   "cpu_cores": {
+    "turboocr": 3.78,
+    "adapter": 1.18,
+    "locust": 0.2
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 92,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2040,
+    "power_w": 312.98,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756670.7,
+   "sys_cpu_pct": 5.46,
+   "cpu_cores": {
+    "turboocr": 3.79,
+    "adapter": 1.17,
+    "locust": 0.21
+   },
+   "rss_mb": {
+    "turboocr": 6737,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 90,
+    "mem_mib": 27152,
+    "temp_c": 88,
+    "sm_mhz": 2115,
+    "power_w": 322.66,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756672.7,
+   "sys_cpu_pct": 5.54,
+   "cpu_cores": {
+    "turboocr": 3.81,
+    "adapter": 1.17,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6746,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2085,
+    "power_w": 318.35,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756674.8,
+   "sys_cpu_pct": 5.73,
+   "cpu_cores": {
+    "turboocr": 3.79,
+    "adapter": 1.23,
+    "locust": 0.28
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 91,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2055,
+    "power_w": 292.87,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756676.8,
+   "sys_cpu_pct": 6.04,
+   "cpu_cores": {
+    "turboocr": 3.88,
+    "adapter": 1.2,
+    "locust": 0.29
+   },
+   "rss_mb": {
+    "turboocr": 6750,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 99,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 1935,
+    "power_w": 296.02,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756678.8,
+   "sys_cpu_pct": 6.49,
+   "cpu_cores": {
+    "turboocr": 3.78,
+    "adapter": 1.2,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6757,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 95,
+    "mem_mib": 27152,
+    "temp_c": 85,
+    "sm_mhz": 2235,
+    "power_w": 292.69,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756680.9,
+   "sys_cpu_pct": 5.6,
+   "cpu_cores": {
+    "turboocr": 3.77,
+    "adapter": 1.18,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6746,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 98,
+    "mem_mib": 27152,
+    "temp_c": 84,
+    "sm_mhz": 2040,
+    "power_w": 302.08,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756682.9,
+   "sys_cpu_pct": 5.8,
+   "cpu_cores": {
+    "turboocr": 3.92,
+    "adapter": 1.23,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6754,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2265,
+    "power_w": 286.21,
+    "throttle": "0x0000000000000004"
+   }
+  },
+  {
+   "t": 1786756684.9,
+   "sys_cpu_pct": 5.61,
+   "cpu_cores": {
+    "turboocr": 3.78,
+    "adapter": 1.21,
+    "locust": 0.26
+   },
+   "rss_mb": {
+    "turboocr": 6759,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 90,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2130,
+    "power_w": 269.4,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756687.0,
+   "sys_cpu_pct": 5.89,
+   "cpu_cores": {
+    "turboocr": 3.95,
+    "adapter": 1.3,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6755,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 89,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2115,
+    "power_w": 299.7,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756689.0,
+   "sys_cpu_pct": 5.65,
+   "cpu_cores": {
+    "turboocr": 3.92,
+    "adapter": 1.21,
+    "locust": 0.21
+   },
+   "rss_mb": {
+    "turboocr": 6758,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 93,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2085,
+    "power_w": 294.48,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756691.0,
+   "sys_cpu_pct": 5.62,
+   "cpu_cores": {
+    "turboocr": 3.81,
+    "adapter": 1.22,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6748,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 90,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2055,
+    "power_w": 304.39,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756693.1,
+   "sys_cpu_pct": 5.62,
+   "cpu_cores": {
+    "turboocr": 3.76,
+    "adapter": 1.24,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 92,
+    "mem_mib": 27152,
+    "temp_c": 88,
+    "sm_mhz": 2040,
+    "power_w": 292.26,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756695.1,
+   "sys_cpu_pct": 5.6,
+   "cpu_cores": {
+    "turboocr": 3.81,
+    "adapter": 1.24,
+    "locust": 0.21
+   },
+   "rss_mb": {
+    "turboocr": 6716,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 95,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2265,
+    "power_w": 300.36,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756697.1,
+   "sys_cpu_pct": 5.65,
+   "cpu_cores": {
+    "turboocr": 3.81,
+    "adapter": 1.16,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 93,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 1875,
+    "power_w": 275.23,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756699.2,
+   "sys_cpu_pct": 5.6,
+   "cpu_cores": {
+    "turboocr": 3.71,
+    "adapter": 1.18,
+    "locust": 0.25
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 98,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1635,
+    "power_w": 300.65,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756701.2,
+   "sys_cpu_pct": 5.65,
+   "cpu_cores": {
+    "turboocr": 3.82,
+    "adapter": 1.18,
+    "locust": 0.25
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 99,
+    "mem_mib": 27152,
+    "temp_c": 85,
+    "sm_mhz": 1830,
+    "power_w": 312.86,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756703.2,
+   "sys_cpu_pct": 5.57,
+   "cpu_cores": {
+    "turboocr": 3.81,
+    "adapter": 1.2,
+    "locust": 0.25
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 97,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1950,
+    "power_w": 288.77,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756705.2,
+   "sys_cpu_pct": 5.49,
+   "cpu_cores": {
+    "turboocr": 3.74,
+    "adapter": 1.16,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6720,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 88,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2115,
+    "power_w": 295.24,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756707.3,
+   "sys_cpu_pct": 5.58,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.21,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6746,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 98,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1680,
+    "power_w": 294.69,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756709.3,
+   "sys_cpu_pct": 5.55,
+   "cpu_cores": {
+    "turboocr": 3.94,
+    "adapter": 1.11,
+    "locust": 0.2
+   },
+   "rss_mb": {
+    "turboocr": 6747,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 97,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2220,
+    "power_w": 284.47,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756711.3,
+   "sys_cpu_pct": 5.74,
+   "cpu_cores": {
+    "turboocr": 4.0,
+    "adapter": 1.18,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6745,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 87,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2325,
+    "power_w": 275.05,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756713.4,
+   "sys_cpu_pct": 5.87,
+   "cpu_cores": {
+    "turboocr": 3.77,
+    "adapter": 1.27,
+    "locust": 0.27
+   },
+   "rss_mb": {
+    "turboocr": 6746,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 92,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2040,
+    "power_w": 275.97,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756715.4,
+   "sys_cpu_pct": 5.88,
+   "cpu_cores": {
+    "turboocr": 3.87,
+    "adapter": 1.28,
+    "locust": 0.27
+   },
+   "rss_mb": {
+    "turboocr": 6728,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2085,
+    "power_w": 288.38,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756717.4,
+   "sys_cpu_pct": 5.7,
+   "cpu_cores": {
+    "turboocr": 3.88,
+    "adapter": 1.17,
+    "locust": 0.32
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 94,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1875,
+    "power_w": 282.19,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756719.5,
+   "sys_cpu_pct": 5.7,
+   "cpu_cores": {
+    "turboocr": 3.94,
+    "adapter": 1.17,
+    "locust": 0.32
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1995,
+    "power_w": 286.89,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756721.5,
+   "sys_cpu_pct": 5.59,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.09,
+    "locust": 0.31
+   },
+   "rss_mb": {
+    "turboocr": 6738,
+    "adapter": 301,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 94,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2025,
+    "power_w": 277.38,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756723.6,
+   "sys_cpu_pct": 5.58,
+   "cpu_cores": {
+    "turboocr": 3.77,
+    "adapter": 1.2,
+    "locust": 0.3
+   },
+   "rss_mb": {
+    "turboocr": 6741,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 89,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 2220,
+    "power_w": 295.35,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756725.6,
+   "sys_cpu_pct": 5.7,
+   "cpu_cores": {
+    "turboocr": 3.84,
+    "adapter": 1.22,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6726,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 95,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1890,
+    "power_w": 282.93,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756727.6,
+   "sys_cpu_pct": 5.65,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.25,
+    "locust": 0.23
+   },
+   "rss_mb": {
+    "turboocr": 6742,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 98,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1515,
+    "power_w": 294.19,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756729.6,
+   "sys_cpu_pct": 5.76,
+   "cpu_cores": {
+    "turboocr": 3.9,
+    "adapter": 1.23,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6746,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 97,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1695,
+    "power_w": 292.23,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756731.7,
+   "sys_cpu_pct": 5.91,
+   "cpu_cores": {
+    "turboocr": 4.0,
+    "adapter": 1.3,
+    "locust": 0.26
+   },
+   "rss_mb": {
+    "turboocr": 6738,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 99,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1695,
+    "power_w": 293.95,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756733.7,
+   "sys_cpu_pct": 5.76,
+   "cpu_cores": {
+    "turboocr": 3.86,
+    "adapter": 1.31,
+    "locust": 0.25
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 97,
+    "mem_mib": 27152,
+    "temp_c": 88,
+    "sm_mhz": 2130,
+    "power_w": 294.78,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756735.7,
+   "sys_cpu_pct": 5.56,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.15,
+    "locust": 0.28
+   },
+   "rss_mb": {
+    "turboocr": 6728,
+    "adapter": 299,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 1695,
+    "power_w": 294.39,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756737.8,
+   "sys_cpu_pct": 6.16,
+   "cpu_cores": {
+    "turboocr": 3.79,
+    "adapter": 1.25,
+    "locust": 0.27
+   },
+   "rss_mb": {
+    "turboocr": 6743,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 97,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1665,
+    "power_w": 292.06,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756739.8,
+   "sys_cpu_pct": 5.42,
+   "cpu_cores": {
+    "turboocr": 3.83,
+    "adapter": 1.25,
+    "locust": 0.29
+   },
+   "rss_mb": {
+    "turboocr": 6747,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 98,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2190,
+    "power_w": 278.45,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756741.8,
+   "sys_cpu_pct": 5.84,
+   "cpu_cores": {
+    "turboocr": 3.94,
+    "adapter": 1.27,
+    "locust": 0.31
+   },
+   "rss_mb": {
+    "turboocr": 6740,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 94,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1590,
+    "power_w": 291.16,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756743.9,
+   "sys_cpu_pct": 5.62,
+   "cpu_cores": {
+    "turboocr": 3.73,
+    "adapter": 1.25,
+    "locust": 0.22
+   },
+   "rss_mb": {
+    "turboocr": 6744,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 94,
+    "mem_mib": 27152,
+    "temp_c": 85,
+    "sm_mhz": 1875,
+    "power_w": 292.75,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756745.9,
+   "sys_cpu_pct": 5.8,
+   "cpu_cores": {
+    "turboocr": 3.75,
+    "adapter": 1.29,
+    "locust": 0.27
+   },
+   "rss_mb": {
+    "turboocr": 6729,
+    "adapter": 298,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 95,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1905,
+    "power_w": 291.1,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756747.9,
+   "sys_cpu_pct": 5.7,
+   "cpu_cores": {
+    "turboocr": 3.77,
+    "adapter": 1.25,
+    "locust": 0.32
+   },
+   "rss_mb": {
+    "turboocr": 6745,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 1620,
+    "power_w": 281.98,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756750.0,
+   "sys_cpu_pct": 5.77,
+   "cpu_cores": {
+    "turboocr": 3.85,
+    "adapter": 1.27,
+    "locust": 0.32
+   },
+   "rss_mb": {
+    "turboocr": 6749,
+    "adapter": 296,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 92,
+    "mem_mib": 27152,
+    "temp_c": 88,
+    "sm_mhz": 1740,
+    "power_w": 288.12,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756752.0,
+   "sys_cpu_pct": 5.64,
+   "cpu_cores": {
+    "turboocr": 3.88,
+    "adapter": 1.22,
+    "locust": 0.24
+   },
+   "rss_mb": {
+    "turboocr": 6746,
+    "adapter": 297,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 87,
+    "sm_mhz": 1500,
+    "power_w": 287.37,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756754.0,
+   "sys_cpu_pct": 5.72,
+   "cpu_cores": {
+    "turboocr": 3.9,
+    "adapter": 1.24,
+    "locust": 0.31
+   },
+   "rss_mb": {
+    "turboocr": 6748,
+    "adapter": 300,
+    "locust": 54
+   },
+   "gpu": {
+    "util": 96,
+    "mem_mib": 27152,
+    "temp_c": 86,
+    "sm_mhz": 2010,
+    "power_w": 288.67,
+    "throttle": "0x0000000000000020"
+   }
+  },
+  {
+   "t": 1786756756.1,
+   "sys_cpu_pct": 2.39,
+   "cpu_cores": {
+    "turboocr": 1.04,
+    "adapter": 0.36,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 76,
+    "sm_mhz": 2520,
+    "power_w": 135.95,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756758.1,
+   "sys_cpu_pct": 1.03,
+   "cpu_cores": {
+    "turboocr": 0.01,
+    "adapter": 0.01,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 2,
+    "mem_mib": 27152,
+    "temp_c": 74,
+    "sm_mhz": 2520,
+    "power_w": 112.01,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756760.2,
+   "sys_cpu_pct": 1.27,
+   "cpu_cores": {
+    "turboocr": 0.01,
+    "adapter": 0.0,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 73,
+    "sm_mhz": 2520,
+    "power_w": 109.31,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756762.2,
+   "sys_cpu_pct": 1.08,
+   "cpu_cores": {
+    "turboocr": 0.01,
+    "adapter": 0.01,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 72,
+    "sm_mhz": 2520,
+    "power_w": 108.67,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756764.3,
+   "sys_cpu_pct": 1.04,
+   "cpu_cores": {
+    "turboocr": 0.01,
+    "adapter": 0.01,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 71,
+    "sm_mhz": 2520,
+    "power_w": 108.17,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756766.3,
+   "sys_cpu_pct": 1.1,
+   "cpu_cores": {
+    "turboocr": 0.01,
+    "adapter": 0.01,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 71,
+    "sm_mhz": 2520,
+    "power_w": 105.94,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756768.4,
+   "sys_cpu_pct": 1.04,
+   "cpu_cores": {
+    "turboocr": 0.0,
+    "adapter": 0.01,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 70,
+    "sm_mhz": 2520,
+    "power_w": 105.76,
+    "throttle": "0x0000000000000000"
+   }
+  },
+  {
+   "t": 1786756770.4,
+   "sys_cpu_pct": 1.11,
+   "cpu_cores": {
+    "turboocr": 0.01,
+    "adapter": 0.0,
+    "locust": 0.0
+   },
+   "rss_mb": {
+    "turboocr": 6672,
+    "adapter": 297,
+    "locust": 0
+   },
+   "gpu": {
+    "util": 0,
+    "mem_mib": 27152,
+    "temp_c": 70,
+    "sm_mhz": 2520,
+    "power_w": 105.32,
+    "throttle": "0x0000000000000000"
+   }
+  }
+ ]
+}

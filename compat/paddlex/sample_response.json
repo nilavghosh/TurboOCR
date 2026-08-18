@@ -1,0 +1,133 @@
+{
+  "logId": "2bc49dfd-206b-4a21-b2b8-feab3a4c56d5",
+  "errorCode": 0,
+  "errorMsg": "Success",
+  "result": {
+    "ocrResults": [
+      {
+        "prunedResult": {
+          "model_settings": {
+            "use_doc_preprocessor": false,
+            "use_textline_orientation": true
+          },
+          "dt_polys": [
+            [
+              [
+                156,
+                70
+              ],
+              [
+                235,
+                70
+              ],
+              [
+                235,
+                85
+              ],
+              [
+                156,
+                85
+              ]
+            ],
+            [
+              [
+                128,
+                82
+              ],
+              [
+                270,
+                85
+              ],
+              [
+                270,
+                105
+              ],
+              [
+                128,
+                102
+              ]
+            ]
+          ],
+          "text_det_params": {
+            "limit_side_len": 64,
+            "limit_type": "min",
+            "thresh": 0.2,
+            "box_thresh": 0.45,
+            "unclip_ratio": 1.4
+          },
+          "text_type": "general",
+          "text_rec_score_thresh": 0.0,
+          "return_word_box": false,
+          "rec_texts": [
+            "Berghotel",
+            "Grosse Scheidegg"
+          ],
+          "rec_scores": [
+            0.99517,
+            0.99933
+          ],
+          "rec_polys": [
+            [
+              [
+                156,
+                70
+              ],
+              [
+                235,
+                70
+              ],
+              [
+                235,
+                85
+              ],
+              [
+                156,
+                85
+              ]
+            ],
+            [
+              [
+                128,
+                82
+              ],
+              [
+                270,
+                85
+              ],
+              [
+                270,
+                105
+              ],
+              [
+                128,
+                102
+              ]
+            ]
+          ],
+          "rec_boxes": [
+            [
+              156,
+              70,
+              235,
+              85
+            ],
+            [
+              128,
+              82,
+              270,
+              105
+            ]
+          ]
+        },
+        "ocrImage": null,
+        "docPreprocessingImage": null,
+        "inputImage": null
+      }
+    ],
+    "dataInfo": {
+      "width": 400,
+      "height": 533,
+      "type": "image"
+    }
+  }
+}

@@ -1,0 +1,234 @@
+# ============================================================
+# TurboOCR + PaddleX-compatible API — CUDA 12.8 image (Hopper + Blackwell)
+# ============================================================
+# One recipe for both current deployment GPUs. CUDA 12.8 is a superset of 12.4:
+# it supports Hopper (H100, sm_90) AND Blackwell (RTX PRO 6000 / RTX 50xx,
+# sm_120), which 12.4 does not. So the ONLY thing that changes between the two
+# targets is CUDA_ARCH.
+#
+#   H100 / Hopper :  --build-arg CUDA_ARCH=90
+#   RTX PRO 6000  :  --build-arg CUDA_ARCH=120
+#
+# CUDA_ARCH drives three things at once here: the compile target
+# (CMAKE_CUDA_ARCHITECTURES), which TensorRT builder-resource library is shipped
+# (libnvinfer_builder_resource_sm<arch>.so), and the arch stamped into the image.
+# A build fails EARLY (not hours later at first engine build on the GPU) if the
+# chosen TensorRT release does not ship the builder resource for CUDA_ARCH.
+#
+# ENGINE CACHE NOTE. Engines are per (arch, driver-CUDA, runtime-CUDA, TRT), so
+# H100 and Blackwell always warm their OWN variant dir regardless of the image:
+#   sm90-rt12.8-drv<X>-trt10.16   and   sm120-rt12.8-drv<Y>-trt10.16
+# Moving the H100 off the old CUDA-12.4 image changes the runtime component
+# (rt12.4 -> rt12.8), so existing sm90-rt12.4 engines will NOT match and the H100
+# needs a one-time re-warm as sm90-rt12.8. This is only a rebuild of engines, not
+# of accuracy.
+#
+# Build:
+#   docker build -f compat/paddlex/Dockerfile.cuda128 \
+#     --build-arg CUDA_ARCH=90  -t turboocr:paddlex-sm90 .     # H100
+#   docker build -f compat/paddlex/Dockerfile.cuda128 \
+#     --build-arg CUDA_ARCH=120 -t turboocr:paddlex-sm120 .    # RTX PRO 6000
+# Warm once, then serve (see deploy/README.md):
+#   docker run --rm --gpus all -v turboocr-models:/models \
+#     -e WARM_ONLY=1 -e OCR_MODEL=medium -e TRT_OPT_LEVEL=3 turboocr:paddlex-sm<arch>
+#   docker run --gpus all -p 8080:8080 -v turboocr-models:/models \
+#     -e OCR_MODEL=small turboocr:paddlex-sm<arch>
+# ============================================================
+
+# CUDA 12.8 — first toolkit with sm_120 (Blackwell); also fully supports sm_90.
+ARG CUDA_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+
+# ------------------------------------------------------------
+# Stage 1 — builder
+# ------------------------------------------------------------
+FROM ${CUDA_IMAGE} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 90 = Hopper (H100/H200); 120 = Blackwell (RTX PRO 6000, RTX 50xx). Declared up
+# here so the TensorRT builder-resource guard below can validate it.
+ARG CUDA_ARCH=120
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg \
+    && curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x60C317803A41BA51845E371A1E9377A2BA9EF27F" \
+        | gpg --dearmor -o /usr/share/keyrings/ubuntu-toolchain-r.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/ubuntu-toolchain-r.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/toolchain-r.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        gcc-13 g++-13 \
+        build-essential pkg-config git wget cmake \
+        libopencv-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+        libjsoncpp-dev uuid-dev zlib1g-dev libssl-dev libc-ares-dev \
+        libcurl4-openssl-dev libturbojpeg0-dev libwebp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CC=gcc-13 CXX=g++-13 CUDAHOSTCXX=g++-13
+
+RUN cd /tmp && git clone --depth 1 --branch v1.9.12 https://github.com/drogonframework/drogon.git \
+    && cd drogon && git submodule update --init \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_EXAMPLES=OFF -DBUILD_CTL=OFF -DBUILD_ORM=OFF \
+        -DBUILD_POSTGRESQL=OFF -DBUILD_MYSQL=OFF -DBUILD_SQLITE=OFF \
+        -DBUILD_REDIS=OFF -DBUILD_TESTING=OFF \
+    && cmake --build build -j"$(nproc)" && cmake --install build \
+    && rm -rf /tmp/drogon
+
+# TensorRT. Must ship the builder resource for the requested CUDA_ARCH (Blackwell
+# sm_120 landed in TRT 10.8; Hopper sm_90 much earlier). TRT_CUDA is the tarball's
+# CUDA flavour and must be a 12.x build.
+ARG TRT_VERSION=10.16.0.72
+ARG TRT_CUDA=12.9
+RUN cd /usr/local && \
+    curl -fsSL "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/${TRT_VERSION%.*}/tars/TensorRT-${TRT_VERSION}.Linux.x86_64-gnu.cuda-${TRT_CUDA}.tar.gz" \
+      | tar xzf - --wildcards \
+          "TensorRT-${TRT_VERSION}/include/*" \
+          "TensorRT-${TRT_VERSION}/lib/*.so*" \
+    && ln -sfn "/usr/local/TensorRT-${TRT_VERSION}" /usr/local/tensorrt
+
+# Fail the BUILD now if this TRT has no builder resource for CUDA_ARCH, instead
+# of at first engine build on the GPU with:
+#   Unable to load library: libnvinfer_builder_resource_sm<arch>.so...: No such file
+RUN test -n "$(ls /usr/local/tensorrt/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so* 2>/dev/null)" \
+    || { echo "FATAL: TensorRT ${TRT_VERSION} ships no libnvinfer_builder_resource_sm${CUDA_ARCH}.so (for CUDA_ARCH=${CUDA_ARCH})." >&2; \
+         echo "       Use a TensorRT that supports this arch (Blackwell sm_120 needs >=10.8), via --build-arg TRT_VERSION / TRT_CUDA." >&2; \
+         echo "       builder resources present in this TRT:" >&2; \
+         ls /usr/local/tensorrt/lib/libnvinfer_builder_resource_sm*.so* >&2 || true; \
+         exit 1; }
+
+ARG ORT_VERSION=1.22.0
+RUN cd /tmp && \
+    curl -fsSL -O "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && tar xzf "onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" \
+    && mkdir -p /src/third_party/onnxruntime \
+    && cp -r "onnxruntime-linux-x64-gpu-${ORT_VERSION}/include" \
+             "onnxruntime-linux-x64-gpu-${ORT_VERSION}/lib" /src/third_party/onnxruntime/ \
+    && rm -rf /tmp/onnxruntime*
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY proto/ proto/
+COPY include/ include/
+COPY src/ src/
+COPY tools/ tools/
+COPY third_party/ third_party/
+COPY tests/ tests/
+COPY scripts/ scripts/
+COPY bin/ bin/
+
+# Jammy's apt cmake (3.22.1) cannot build fastpdf2png (needs >= 3.25 for its
+# CMakePresets.json "version": 6). Same fix as the other CUDA-12 images.
+ARG CMAKE_VERSION=3.31.6
+RUN cd /tmp && \
+    wget -q "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" && \
+    tar xzf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/bin/* /usr/local/bin/ && \
+    cp -r cmake-${CMAKE_VERSION}-linux-x86_64/share/* /usr/local/share/ && \
+    rm -rf /tmp/cmake*
+
+RUN rm -f bin/fastpdf2png && bash scripts/install_fastpdf2png.sh \
+    && cp bin/libpdfium.so /usr/lib/ && ldconfig
+
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DTENSORRT_DIR=/usr/local/tensorrt \
+        -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+        -DFETCH_MODELS=OFF \
+    && cmake --build build -j"$(nproc)" --target turboocr-server
+
+RUN bash scripts/fetch_release_models.sh
+
+# ------------------------------------------------------------
+# Stage 2 — runtime + PaddleX adapter
+# ------------------------------------------------------------
+FROM ${CUDA_RUNTIME_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libopencv-core4.5d libopencv-imgproc4.5d libopencv-imgcodecs4.5d \
+        libgrpc++1 libprotobuf23 libjsoncpp25 libcurl4 libturbojpeg \
+        libssl3 libc-ares2 libuuid1 zlib1g curl ca-certificates \
+        python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# GCC 13's libstdc++/libgcc — the binary references GLIBCXX_3.4.31/3.4.32
+# (std::format needs gcc-13), which the stock jammy runtime lacks.
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/
+
+ARG TRT_VERSION=10.16.0.72
+# Ships the builder resource for this arch (sm90 for H100, sm120 for Blackwell) —
+# needed to build engines from ONNX on a cache miss.
+ARG CUDA_ARCH=120
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvonnxparser.so.10* /usr/local/tensorrt/lib/
+COPY --from=builder /usr/local/TensorRT-${TRT_VERSION}/lib/libnvinfer_builder_resource_sm${CUDA_ARCH}.so.* /usr/local/tensorrt/lib/
+
+COPY --from=builder /src/third_party/onnxruntime/lib/ /usr/local/lib/
+COPY --from=builder /usr/lib/libpdfium.so /usr/lib/
+
+WORKDIR /app
+COPY --from=builder /src/build/turboocr-server ./build/turboocr-server
+COPY --from=builder /src/bin/ ./bin/
+COPY --from=builder /src/models/ ./models/
+
+# Adapter layer last: editing it does not invalidate the C++ build above.
+COPY compat/paddlex/requirements.txt /app/compat/paddlex/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/compat/paddlex/requirements.txt
+COPY compat/paddlex/paddlex_adapter.py /app/compat/paddlex/paddlex_adapter.py
+COPY deploy/entrypoint.sh /app/deploy/entrypoint.sh
+RUN chmod +x /app/deploy/entrypoint.sh
+
+ENV LD_LIBRARY_PATH=/usr/local/tensorrt/lib:/usr/local/lib:/usr/local/cuda/lib64
+# Fail the BUILD on an ABI mismatch rather than the pod. libcuda.so.1 is injected
+# by the container runtime and legitimately absent here, so only symbol-version
+# failures are matched.
+RUN ldconfig \
+    && if ldd -r ./build/turboocr-server 2>&1 | grep -qE "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]"; then \
+         echo "FATAL: runtime stage is missing libstdc++/libgcc symbols the binary needs:" >&2; \
+         ldd -r ./build/turboocr-server 2>&1 | grep -E "GLIBCXX_|GLIBC_[0-9]|GCC_[0-9]" >&2; \
+         exit 1; \
+       fi
+
+# ------------------------------------------------------------
+# Toolchain identity — stamped into the image (BUILD-time facts, not runtime knobs).
+# CUDA 12.8; lands in the engine cache key alongside TRT + arch.
+# ------------------------------------------------------------
+ARG CUDA_RUNTIME=12.8
+ENV TURBO_CUDA_RUNTIME=${CUDA_RUNTIME}
+ENV TURBO_TRT_VERSION=${TRT_VERSION}
+ENV TURBO_CUDA_ARCH=${CUDA_ARCH}
+LABEL org.turboocr.cuda-runtime="${CUDA_RUNTIME}" \
+      org.turboocr.tensorrt="${TRT_VERSION}" \
+      org.turboocr.cuda-arch="${CUDA_ARCH}"
+
+# ------------------------------------------------------------
+# Models volume
+# ------------------------------------------------------------
+ENV MODELS_DIR=/models
+RUN mkdir -p /models/engines
+VOLUME ["/models"]
+
+# Runtime-selectable knobs.
+#   OCR_MODEL      tiny | small | medium (+ arabic, eslav, korean, thai, greek)
+#   GPU_DEVICE     which physical GPU to bind on a multi-GPU host
+#   GPU_ARCH       override the auto-detected sm_XX (rarely needed)
+#   TRT_OPT_LEVEL  3 builds far faster than the default 5, slightly slower engines
+#   WARM_ONLY=1    build engines into the volume and exit, serving nothing
+ENV OCR_MODEL=medium \
+    LOG_FORMAT=json \
+    TRT_OPT_LEVEL=5
+
+ENV PADDLEX_API=1 \
+    TURBO_PORT=8081 \
+    PADDLEX_PORT=8080 \
+    PADDLEX_WORKERS=4
+
+# Only the PaddleX-compatible port is published; 8081 stays internal.
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]
